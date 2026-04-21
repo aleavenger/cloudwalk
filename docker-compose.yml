@@ -1,0 +1,51 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    container_name: cloudwalk-api
+    environment:
+      HOST: ${API_HOST:-0.0.0.0}
+      PORT: 8000
+      DATA_DIR: /app/database
+      MONITORING_API_KEY: ${MONITORING_API_KEY:-reviewer-local-demo-key}
+      MAX_MONITOR_REQUEST_BYTES: ${MAX_MONITOR_REQUEST_BYTES:-65536}
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    volumes:
+      - ./database:/app/database
+      - ./charts:/app/charts
+      - ./logs:/app/logs
+      - ./sql:/app/sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  grafana:
+    build:
+      context: .
+      dockerfile: docker/grafana.Dockerfile
+      args:
+        GRAFANA_INFINITY_PLUGIN_VERSION: ${GRAFANA_INFINITY_PLUGIN_VERSION:-3.6.0}
+    container_name: cloudwalk-grafana
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      MONITORING_API_KEY: ${MONITORING_API_KEY:-reviewer-local-demo-key}
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboard.json:/etc/grafana/dashboards/cloudwalk-dashboard.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:3000/api/health | grep -q '\"ok\"'"]
+      interval: 15s
+      timeout: 7s
+      retries: 20
+      start_period: 30s

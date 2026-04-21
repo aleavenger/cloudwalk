@@ -1,0 +1,88 @@
+{
+  "title": "CloudWalk Monitoring Test Dashboard",
+  "uid": "cloudwalk-monitoring-test",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Transaction Volume",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "cloudwalk-monitoring-api" },
+      "targets": [
+        {
+          "refId": "A",
+          "source": "url",
+          "type": "json",
+          "format": "table",
+          "url": "http://api:8000/metrics",
+          "root_selector": "rows",
+          "columns": []
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Denied / Failed / Reversed Rates",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "cloudwalk-monitoring-api" },
+      "targets": [
+        {
+          "refId": "A",
+          "source": "url",
+          "type": "json",
+          "format": "table",
+          "url": "http://api:8000/metrics",
+          "root_selector": "rows",
+          "columns": []
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Recent Alerts",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "cloudwalk-monitoring-api" },
+      "targets": [
+        {
+          "refId": "A",
+          "source": "url",
+          "type": "json",
+          "format": "table",
+          "url": "http://api:8000/alerts",
+          "root_selector": "alerts",
+          "columns": []
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Active Alert State",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 16 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "cloudwalk-monitoring-api" },
+      "targets": [
+        {
+          "refId": "A",
+          "source": "url",
+          "type": "json",
+          "format": "table",
+          "url": "http://api:8000/metrics",
+          "root_selector": "rows",
+          "columns": []
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    }
+  ],
+  "templating": { "list": [] },
+  "annotations": { "list": [] }
+}

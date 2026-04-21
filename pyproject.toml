@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cloudwalk-monitoring-test-submission"
+version = "0.1.0"
+description = "CloudWalk monitoring analyst take-home implementation"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi==0.115.0",
+  "uvicorn==0.30.6",
+  "pydantic==2.9.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.3.3",
+  "httpx==0.27.2",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

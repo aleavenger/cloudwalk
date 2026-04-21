@@ -1,0 +1,14 @@
+apiVersion: 1
+
+datasources:
+  - name: CloudWalk Infinity
+    uid: cloudwalk-monitoring-api
+    type: yesoreyeram-infinity-datasource
+    access: proxy
+    isDefault: true
+    editable: false
+    jsonData:
+      auth_method: none
+      httpHeaderName1: X-API-Key
+    secureJsonData:
+      httpHeaderValue1: ${MONITORING_API_KEY}
