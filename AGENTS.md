@@ -24,6 +24,7 @@ Agents must read these files before non-trivial changes.
 - Alert behavior: baseline, thresholds, cooldown suppression.
 - Log hygiene: no key leakage, aggregated-only metadata.
 - Bootstrap flow: report+chart generation before API startup.
+- UI/runtime validation: for dashboard or frontend-visible changes, run a Playwright check before closing the task (when Playwright tooling is available in the environment).
 
 ## Documentation Rule
 

@@ -31,7 +31,7 @@ The system has two analysis tracks and one reviewer-facing presentation layer.
 - Reads minute-level status totals from `database/transactions.csv`.
 - Reads minute-level auth-code totals from `database/transactions_auth_codes.csv`.
 - Computes baseline-aware anomaly decisions for denied/failed/reversed behavior.
-- Exposes outputs via `/monitor`, `/metrics`, and `/alerts`.
+- Exposes outputs via `/monitor`, `/metrics`, `/alerts`, and `/decision`.
 
 3. Presentation and conclusions
 - Charts in `charts/`.
@@ -75,6 +75,54 @@ Alert recommendation behavior:
 - return `alert` when rate behavior materially exceeds threshold conditions
 - deduplicate repeated equivalent alert conditions during cooldown windows
 
+### Decision Guidance Logic (`GET /decision`)
+
+The decision layer is built from current runtime state and does not alter formal alert generation.
+
+Local-authoritative behavior:
+- computes priority ranking across `denied`, `failed`, and `reversed`
+- computes bounded risk score (`0..100`)
+- computes confidence from history depth + current volume
+- returns recommended action, root-cause hint, and top auth-code clues
+
+Locked overall-status mapping:
+- `act_now`: any current metric is `warning` or `critical`
+- `watch`: no metric is `act_now`, but a current `info` metric or forecast-elevated metric exists
+- `normal`: no current or forecasted elevated risk
+
+Predictive separation rule:
+- `watch` is guidance only and does not write new entries to `/alerts`.
+- formal alert history remains tied to `/monitor` threshold breaches and cooldown rules.
+
+### Forecast Method
+
+Default parameters (unless overridden by env):
+- lookback window: 15 minutes
+- horizon: 30 minutes
+- step: 5 minutes
+- minimum history points: 5
+
+Computation:
+- weighted moving average over retained points with weights `1..N`
+- slope from arithmetic mean of consecutive per-minute deltas
+- bounded forecast rates to valid range `0.0..1.0`
+- when history is insufficient, forecast output is omitted and confidence remains lower
+
+### Optional External Narrative Mode
+
+Default mode is local. External mode is optional and controlled by environment.
+
+Supported providers:
+- `openai`
+- `anthropic`
+- `google`
+
+Safety contract:
+- external provider can rewrite only `summary` and `top_recommendation`
+- local logic remains authoritative for status/ranking/severity/risk
+- failure, timeout, or invalid external output falls back to local guidance
+- surfaced provider status is sanitized and excludes API keys/raw payloads
+
 Known spike anchors used for acceptance:
 
 - denied spike: `2025-07-12 17:18:00`
@@ -88,6 +136,8 @@ Auth-code data is used as triage context for anomalous windows:
 - map auth-code counts to the same transaction timestamps
 - surface leading auth codes for alertable windows
 - help distinguish concentrated failure patterns from distributed ones
+- keep tuple-based top-code fields as the canonical machine-readable contract
+- derive readable dashboard strings (for example `51 Insufficient funds x6`) from the same top-code tuples
 
 Auth codes enrich anomaly explanation but do not replace status-based anomaly detection.
 
@@ -107,6 +157,7 @@ From `database/*.csv`, the repository produces and exposes:
 - Thresholds are intentionally fixed for deterministic reproducibility.
 - Conclusions are bounded by the provided datasets and windows.
 - Local demo credentials and localhost-only exposure are part of the reviewer workflow, not production guidance.
+- Forecast guidance is heuristic and intended for short-horizon operator prioritization, not long-term prediction.
 
 ## When to Update This File
 

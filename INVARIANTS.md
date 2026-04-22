@@ -11,7 +11,7 @@ Canonical shared AI policy baseline: `RULES.md`.
 # 1. Endpoint and Auth Contract
 
 - `GET /health` is always public.
-- `POST /monitor`, `GET /metrics`, `GET /alerts` must require `X-API-Key` if `MONITORING_API_KEY` is configured.
+- `POST /monitor`, `GET /metrics`, `GET /alerts`, and `GET /decision` must require `X-API-Key` if `MONITORING_API_KEY` is configured.
 - API key validation must continue to be centralized in `build_api_key_guard()`.
 - Unauthorized calls to protected endpoints must return HTTP 401.
 
@@ -42,6 +42,19 @@ Canonical shared AI policy baseline: `RULES.md`.
 - `MonitorResponse`, `MetricsResponse`, and `AlertsResponse` schemas in `app/models.py` are API contracts.
 - `/metrics` must expose rows with: `timestamp`, `total`, `approved_rate`, `denied_rate`, `failed_rate`, `reversed_rate`, `alert_severity`.
 - `/alerts` entries must include `notification_status`, `reason`, and rate/baseline snapshots.
+- Auth-code tuple fields remain the canonical machine-readable representation; any readable dashboard display field must be additive and derived from those tuples.
+
+---
+
+# 4b. Decision Contract and Separation Rules
+
+- `DecisionResponse` in `app/models.py` is an API contract for `GET /decision`.
+- `overall_status` mapping must remain deterministic:
+  - `act_now` when any current metric is `warning` or `critical`
+  - `watch` when no metric is `act_now` and any metric is current `info` or forecast-elevated
+  - `normal` otherwise
+- Predictive/watch guidance must not append formal alert-history records.
+- External provider integration may rewrite only `summary` and `top_recommendation`; ranking/severity/risk and alert boundaries remain local-authoritative.
 
 ---
 
@@ -50,6 +63,7 @@ Canonical shared AI policy baseline: `RULES.md`.
 - `logs/alerts.log` may include only aggregated alert metadata.
 - API keys and raw monitor payload bodies must never be logged.
 - Auth-code distributions stored in alerts must be top-k aggregate tuples only.
+- Provider status surfaced by `GET /decision` must remain sanitized and must not expose API keys, raw provider responses, or prompt/request bodies.
 
 ---
 
@@ -74,6 +88,15 @@ Canonical shared AI policy baseline: `RULES.md`.
   - API: `127.0.0.1:${API_PORT:-8000}:8000`
   - Grafana: `127.0.0.1:${GRAFANA_PORT:-3000}:3000`
 - Default committed credentials/keys are demo-only and must be documented as local-use only.
+- Local one-click Grafana mode may allow anonymous dashboard viewing (Viewer role) but must remain localhost-bound.
+
+---
+
+# 7b. Reviewer Bootstrap Secret Handling
+
+- `scripts/reviewer_start.sh` is the reviewer one-step entrypoint contract.
+- Bootstrap-created reviewer env file must remain gitignored (`.env.reviewer`) and permission-restricted to owner read/write.
+- Bootstrap terminal output may print raw monitoring API keys only for committed demo defaults; non-demo keys must be referenced by env-file/key name only.
 
 ---
 
@@ -94,3 +117,13 @@ Canonical shared AI policy baseline: `RULES.md`.
   - auth-code enrichment behavior
   - generated artifacts in `database/report/`, `charts/`, and dashboard/report outputs
 - `README.md` must include a reference to `docs/monitoring-methodology.md` so reviewer-facing documentation remains discoverable.
+
+---
+
+# 10. Grafana Provisioning Safety
+
+- Infinity datasource URL-mode queries must only target allowlisted hosts in datasource provisioning (`allowedHosts`), including the compose API URL when one-click stack mode is used.
+- Dashboard default time range must include seeded historical metrics so reviewer startup does not land on an empty graph by default.
+- Grafana metric panels must use query settings that emit time+number fields (backend parser plus explicit timestamp/number columns) so the default provisioned dashboard renders data without manual panel edits.
+- Grafana auth-code table cells must render backend-provided readable strings instead of raw JSON array serialization.
+- Dashboard panel set must remain decision-first and include snapshot, priority queue, forecast risk, recent evidence, recent formal alerts, risk trend, transaction volume context, and first-login guidance.

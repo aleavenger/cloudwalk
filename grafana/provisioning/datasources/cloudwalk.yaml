@@ -10,5 +10,8 @@ datasources:
     jsonData:
       auth_method: none
       httpHeaderName1: X-API-Key
+      allowedHosts:
+        - http://api:8000
+        - http://127.0.0.1:8000
     secureJsonData:
       httpHeaderValue1: ${MONITORING_API_KEY}

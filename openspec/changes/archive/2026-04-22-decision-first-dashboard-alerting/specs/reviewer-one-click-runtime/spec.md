@@ -1,7 +1,5 @@
-## Purpose
+## MODIFIED Requirements
 
-Define one-click reviewer runtime expectations so evaluators can run API and Grafana locally with secure demo defaults and minimal setup.
-## Requirements
 ### Requirement: Reviewer stack SHALL start with a single Docker Compose command
 The repository SHALL provide a Docker Compose based runtime that allows a reviewer to start the monitoring API and Grafana through one guided bootstrap entrypoint that invokes Docker Compose.
 
@@ -31,6 +29,8 @@ The one-click reviewer runtime SHALL keep API-key protection enabled for secured
 #### Scenario: One-click mode uses demo-only local credentials by default
 - **WHEN** the reviewer stack starts with its default local configuration
 - **THEN** the API key and Grafana admin credentials SHALL be clearly documented as demo-only local values and SHALL not require the reviewer to invent credentials manually
+
+## ADDED Requirements
 
 ### Requirement: Reviewer bootstrap SHALL support provider-mode selection safely
 The reviewer bootstrap flow SHALL let the reviewer choose between local decision guidance and optional external-provider-backed narrative enhancement without weakening the local-safe defaults.
@@ -69,4 +69,3 @@ The reviewer bootstrap flow SHALL tell the reviewer what is available after star
 #### Scenario: Bootstrap avoids exposing non-demo API keys in terminal output
 - **WHEN** the reviewer bootstrap completes with non-demo API-key values
 - **THEN** it SHALL avoid printing raw API-key values and SHALL print only a safe reference to where that key is stored
-

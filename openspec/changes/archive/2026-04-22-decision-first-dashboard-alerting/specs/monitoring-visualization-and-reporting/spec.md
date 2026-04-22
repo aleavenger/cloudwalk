@@ -1,7 +1,5 @@
-## Purpose
+## MODIFIED Requirements
 
-Define dashboard, reporting, and reviewer-facing deliverables so anomaly insights are observable, reproducible, and easy to evaluate.
-## Requirements
 ### Requirement: Submission SHALL provide Grafana-ready monitoring views
 The repository SHALL include dashboard assets and supporting data contracts that allow a reviewer to visualize transaction health, operator priorities, predictive risk, and recent formal alert activity in Grafana.
 
@@ -51,17 +49,6 @@ The implementation SHALL assume:
 - **WHEN** the provisioned Grafana datasource is created for Docker Compose mode
 - **THEN** it SHALL query the API through the internal Compose service URL rather than `127.0.0.1`
 
-### Requirement: Authorization code data SHALL enrich anomaly explanation
-The submission SHALL use `transactions_auth_codes.csv` to help explain anomalous transaction windows and highlight the dominant codes associated with those windows.
-
-#### Scenario: Alert review includes auth-code mix
-- **WHEN** an alertable anomalous window is reviewed
-- **THEN** the submission SHALL expose the leading authorization codes for that window or period alongside the status-based alert context
-
-#### Scenario: Report uses auth codes for triage context
-- **WHEN** the technical report explains notable anomalies
-- **THEN** it SHALL describe whether the anomaly appears concentrated in a small number of authorization codes or spread across multiple codes
-
 ### Requirement: Submission SHALL include reviewer-facing documentation
 The repository SHALL include a technical report and startup instructions that explain the problem, the implemented solution, how to run it, and the main findings from the provided datasets.
 
@@ -84,4 +71,3 @@ The repository SHALL include a technical report and startup instructions that ex
 #### Scenario: Documentation explains decision provider behavior
 - **WHEN** the reviewer configures local or external decision guidance
 - **THEN** the documentation SHALL explain the default local mode, optional external mode, and fallback behavior when the external provider is unavailable
-

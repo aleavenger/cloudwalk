@@ -1,86 +1,214 @@
 {
-  "title": "CloudWalk Monitoring Test Dashboard",
+  "title": "CloudWalk Decision-First Monitoring",
   "uid": "cloudwalk-monitoring-test",
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 6,
   "refresh": "30s",
+  "time": {
+    "from": "2025-07-01T00:00:00Z",
+    "to": "2025-07-31T23:59:59Z"
+  },
   "panels": [
     {
       "id": 1,
-      "type": "timeseries",
-      "title": "Transaction Volume",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "type": "table",
+      "title": "Decision Snapshot",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 0 },
       "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "cloudwalk-monitoring-api" },
       "targets": [
         {
           "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "cloudwalk-monitoring-api" },
           "source": "url",
+          "url_options": { "method": "GET" },
           "type": "json",
           "format": "table",
-          "url": "http://api:8000/metrics",
-          "root_selector": "rows",
-          "columns": []
+          "parser": "backend",
+          "url": "http://api:8000/decision",
+          "columns": [
+            { "selector": "generated_at", "text": "generated_at", "type": "timestamp" },
+            { "selector": "overall_status", "text": "overall_status", "type": "string" },
+            { "selector": "top_recommendation", "text": "top_recommendation", "type": "string" },
+            { "selector": "summary", "text": "summary", "type": "string" }
+          ]
         }
       ],
       "fieldConfig": { "defaults": {}, "overrides": [] }
     },
     {
       "id": 2,
-      "type": "timeseries",
-      "title": "Denied / Failed / Reversed Rates",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "type": "table",
+      "title": "Priority Queue",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 0 },
       "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "cloudwalk-monitoring-api" },
       "targets": [
         {
           "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "cloudwalk-monitoring-api" },
           "source": "url",
+          "url_options": { "method": "GET" },
           "type": "json",
           "format": "table",
-          "url": "http://api:8000/metrics",
-          "root_selector": "rows",
-          "columns": []
+          "parser": "backend",
+          "url": "http://api:8000/decision",
+          "root_selector": "priority_items",
+          "columns": [
+            { "selector": "metric", "text": "metric", "type": "string" },
+            { "selector": "decision_status", "text": "decision_status", "type": "string" },
+            { "selector": "current_severity", "text": "current_severity", "type": "string" },
+            { "selector": "risk_score", "text": "risk_score", "type": "number" },
+            { "selector": "confidence", "text": "confidence", "type": "number" },
+            { "selector": "current_rate", "text": "current_rate", "type": "number" },
+            { "selector": "baseline_rate", "text": "baseline_rate", "type": "number" },
+            { "selector": "forecast_rate", "text": "forecast_rate", "type": "number" },
+            { "selector": "top_auth_codes_display", "text": "top_auth_codes_display", "type": "string" },
+            { "selector": "recommended_action", "text": "recommended_action", "type": "string" }
+          ]
         }
       ],
       "fieldConfig": { "defaults": {}, "overrides": [] }
     },
     {
       "id": 3,
-      "type": "table",
-      "title": "Recent Alerts",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "type": "timeseries",
+      "title": "Forecast Risk",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
       "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "cloudwalk-monitoring-api" },
       "targets": [
         {
           "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "cloudwalk-monitoring-api" },
           "source": "url",
+          "url_options": { "method": "GET" },
           "type": "json",
-          "format": "table",
-          "url": "http://api:8000/alerts",
-          "root_selector": "alerts",
-          "columns": []
+          "format": "timeseries",
+          "parser": "backend",
+          "url": "http://api:8000/decision",
+          "root_selector": "forecast_points",
+          "columns": [
+            { "selector": "timestamp", "text": "Time", "type": "timestamp" },
+            { "selector": "forecast_rate", "text": "forecast_rate", "type": "number" }
+          ]
         }
       ],
       "fieldConfig": { "defaults": {}, "overrides": [] }
     },
     {
       "id": 4,
-      "type": "stat",
-      "title": "Active Alert State",
-      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 16 },
+      "type": "table",
+      "title": "Recent Evidence",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
       "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "cloudwalk-monitoring-api" },
       "targets": [
         {
           "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "cloudwalk-monitoring-api" },
           "source": "url",
+          "url_options": { "method": "GET" },
           "type": "json",
           "format": "table",
-          "url": "http://api:8000/metrics",
-          "root_selector": "rows",
-          "columns": []
+          "parser": "backend",
+          "url": "http://api:8000/decision",
+          "root_selector": "recent_evidence",
+          "columns": [
+            { "selector": "timestamp", "text": "timestamp", "type": "timestamp" },
+            { "selector": "source", "text": "source", "type": "string" },
+            { "selector": "message", "text": "message", "type": "string" },
+            { "selector": "auth_code_top_display", "text": "auth_code_top_display", "type": "string" }
+          ]
         }
       ],
       "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Recent Formal Alerts",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 18 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "cloudwalk-monitoring-api" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "cloudwalk-monitoring-api" },
+          "source": "url",
+          "url_options": { "method": "GET" },
+          "type": "json",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://api:8000/alerts",
+          "root_selector": "alerts",
+          "columns": [
+            { "selector": "timestamp", "text": "timestamp", "type": "timestamp" },
+            { "selector": "severity", "text": "severity", "type": "string" },
+            { "selector": "notification_status", "text": "notification_status", "type": "string" },
+            { "selector": "reason", "text": "reason", "type": "string" }
+          ]
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Risk Trend by Metric",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "cloudwalk-monitoring-api" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "cloudwalk-monitoring-api" },
+          "source": "url",
+          "url_options": { "method": "GET" },
+          "type": "json",
+          "format": "timeseries",
+          "parser": "backend",
+          "url": "http://api:8000/metrics",
+          "root_selector": "rows",
+          "columns": [
+            { "selector": "timestamp", "text": "Time", "type": "timestamp" },
+            { "selector": "denied_rate", "text": "denied_rate", "type": "number" },
+            { "selector": "failed_rate", "text": "failed_rate", "type": "number" },
+            { "selector": "reversed_rate", "text": "reversed_rate", "type": "number" }
+          ]
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Transaction Volume Context",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "cloudwalk-monitoring-api" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "cloudwalk-monitoring-api" },
+          "source": "url",
+          "url_options": { "method": "GET" },
+          "type": "json",
+          "format": "timeseries",
+          "parser": "backend",
+          "url": "http://api:8000/metrics",
+          "root_selector": "rows",
+          "columns": [
+            { "selector": "timestamp", "text": "Time", "type": "timestamp" },
+            { "selector": "total", "text": "total", "type": "number" }
+          ]
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 8,
+      "type": "text",
+      "title": "Reviewer First Login",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 34 },
+      "options": {
+        "mode": "markdown",
+        "content": "### First login notes\\n- Grafana defaults: `admin` / `admin` (local demo).\\n- Monitoring API key is required for `/metrics`, `/alerts`, and `/decision`.\\n- Decision mode is selected in the reviewer bootstrap (`local` or `external`).\\n- `watch` is predictive guidance, while formal alerts come from `/monitor` threshold breaches."
+      }
     }
   ],
   "templating": { "list": [] },

@@ -19,14 +19,30 @@ echo "[check] API alerts endpoint with X-API-Key"
 curl -fsS -H "X-API-Key: ${API_KEY}" "${API_URL}/alerts" \
   | python3 -c "import json,sys; data=json.load(sys.stdin); assert 'alerts' in data and isinstance(data['alerts'], list)"
 
+echo "[check] API decision endpoint with X-API-Key"
+curl -fsS -H "X-API-Key: ${API_KEY}" "${API_URL}/decision" \
+  | python3 -c "import json,sys; data=json.load(sys.stdin); assert data['overall_status'] in {'normal','watch','act_now'}; assert isinstance(data['priority_items'], list); assert 'provider_status' in data"
+
 echo "[check] Grafana health endpoint"
-curl -fsS "${GRAFANA_URL}/api/health" \
-  | python3 -c "import json,sys; data=json.load(sys.stdin); assert data.get('database') == 'ok'"
+for attempt in $(seq 1 12); do
+  if curl -fsS "${GRAFANA_URL}/api/health" \
+    | python3 -c "import json,sys; data=json.load(sys.stdin); assert data.get('database') == 'ok'" >/dev/null 2>&1; then
+    break
+  fi
+  if [[ "${attempt}" -eq 12 ]]; then
+    echo "Grafana health check failed after retries." >&2
+    exit 1
+  fi
+  sleep 2
+done
 
 echo "[check] Generated artifacts on host"
 test -s database/report/checkout_1_anomaly.csv
 test -s database/report/checkout_2_anomaly.csv
 test -s charts/checkout_1.svg
 test -s charts/checkout_2.svg
+
+echo "[check] Grafana dashboard provisioning contract"
+python3 scripts/check_grafana_dashboard_contract.py
 
 echo "All one-click smoke checks passed."

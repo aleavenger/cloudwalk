@@ -3,6 +3,11 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
+
+
+DecisionEngineMode = Literal["local", "external"]
+ExternalAIProvider = Literal["openai", "anthropic", "google"]
 
 
 @dataclass(frozen=True)
@@ -24,10 +29,29 @@ class Settings:
     floor_rate_reversed: float
     warning_multiplier: float
     critical_multiplier: float
+    decision_engine_mode: DecisionEngineMode
+    decision_lookback_minutes: int
+    decision_forecast_horizon_minutes: int
+    decision_forecast_step_minutes: int
+    decision_min_history_points: int
+    external_ai_provider: ExternalAIProvider | None
+    external_ai_model: str | None
+    external_ai_api_key: str | None
+    external_ai_timeout_seconds: float
 
 
 def load_settings() -> Settings:
     root = Path(__file__).resolve().parents[1]
+    decision_engine_mode = os.getenv("DECISION_ENGINE_MODE", "local").strip().lower()
+    if decision_engine_mode not in {"local", "external"}:
+        decision_engine_mode = "local"
+
+    external_ai_provider = os.getenv("EXTERNAL_AI_PROVIDER")
+    if external_ai_provider:
+        external_ai_provider = external_ai_provider.strip().lower()
+    if external_ai_provider not in {"openai", "anthropic", "google"}:
+        external_ai_provider = None
+
     return Settings(
         data_dir=Path(os.getenv("DATA_DIR", root / "database")),
         host=os.getenv("HOST", "127.0.0.1"),
@@ -46,4 +70,13 @@ def load_settings() -> Settings:
         floor_rate_reversed=float(os.getenv("FLOOR_RATE_REVERSED", "0.03")),
         warning_multiplier=float(os.getenv("WARNING_MULTIPLIER", "2.0")),
         critical_multiplier=float(os.getenv("CRITICAL_MULTIPLIER", "3.0")),
+        decision_engine_mode=decision_engine_mode,
+        decision_lookback_minutes=int(os.getenv("DECISION_LOOKBACK_MINUTES", "15")),
+        decision_forecast_horizon_minutes=int(os.getenv("DECISION_FORECAST_HORIZON_MINUTES", "30")),
+        decision_forecast_step_minutes=int(os.getenv("DECISION_FORECAST_STEP_MINUTES", "5")),
+        decision_min_history_points=int(os.getenv("DECISION_MIN_HISTORY_POINTS", "5")),
+        external_ai_provider=external_ai_provider,
+        external_ai_model=os.getenv("EXTERNAL_AI_MODEL"),
+        external_ai_api_key=os.getenv("EXTERNAL_AI_API_KEY"),
+        external_ai_timeout_seconds=float(os.getenv("EXTERNAL_AI_TIMEOUT_SECONDS", "10")),
     )

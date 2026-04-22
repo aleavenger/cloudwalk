@@ -5,3 +5,4 @@ __pycache__/
 logs/alerts.log
 .venv39/
 .env
+.env.reviewer

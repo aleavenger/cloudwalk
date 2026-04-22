@@ -6,7 +6,7 @@ This repository implements the CloudWalk monitoring analyst challenge with:
 - Grafana dashboard visualization,
 - local-safe defaults for reviewer execution.
 
-## One-Click Reviewer Setup (Primary)
+## One-Step Reviewer Bootstrap (Primary)
 
 Prerequisites:
 - Docker Engine
@@ -16,21 +16,33 @@ Prerequisites:
 Single command startup:
 
 ```bash
-docker compose up --build
+./scripts/reviewer_start.sh
 ```
 
 Services:
 - API: `http://127.0.0.1:8000`
 - Grafana: `http://127.0.0.1:3000`
 
+Bootstrap behavior:
+- creates `.env.reviewer` from `.env.example` and sets owner-only permissions (`chmod 600`)
+- prompts for decision mode (`local` or `external`)
+- if `external`: prompts provider (`openai`, `anthropic`, `google`), model, and API key
+- falls back to `local` mode when external key is not provided
+- starts API + Grafana with `docker compose --env-file .env.reviewer up --build -d`
+- runs `./scripts/smoke_one_click.sh`
+- prints first-login details and safe stop command
+
 Default demo credentials:
 - Grafana user: `admin`
 - Grafana password: `admin`
 - API key header: `X-API-Key: reviewer-local-demo-key`
+- Grafana anonymous dashboard access: enabled (Viewer role) for local demo reliability
 
 Demo key notice:
 - `reviewer-local-demo-key` is a local demo value only.
 - It is intentionally committed for evaluator convenience and is safe only because ports are bound to `127.0.0.1`.
+- The bootstrap script prints raw monitoring API keys only for this demo value.
+- For non-demo keys, bootstrap output shows only `MONITORING_API_KEY` reference in `.env.reviewer`.
 
 The stack automatically:
 - generates `database/report/checkout_1_anomaly.csv` and `database/report/checkout_2_anomaly.csv`,
@@ -42,6 +54,8 @@ Smoke checks after startup:
 ```bash
 ./scripts/smoke_one_click.sh
 ```
+
+This smoke script also enforces the Grafana dashboard provisioning contract (query format/parser/typed columns) to catch "No data" regressions.
 
 Optional config override:
 
@@ -58,11 +72,23 @@ docker compose up --build
   - `127.0.0.1:8000` for API
   - `127.0.0.1:3000` for Grafana
 - `/health` is public.
-- `/monitor`, `/metrics`, and `/alerts` require `X-API-Key` when `MONITORING_API_KEY` is set (enabled by default in one-click mode).
+- `/monitor`, `/metrics`, `/alerts`, and `/decision` require `X-API-Key` when `MONITORING_API_KEY` is set (enabled by default in one-click mode).
 - Output directories are mounted to host:
   - `report/`
   - `charts/`
   - `logs/`
+
+Decision guidance modes:
+- `DECISION_ENGINE_MODE=local` (default): deterministic local scoring, ranking, and forecast.
+- `DECISION_ENGINE_MODE=external`: local scoring remains authoritative; external provider may rewrite only `summary` and `top_recommendation`.
+- Supported external providers: `openai`, `anthropic`, `google`.
+- External failures safely fall back to local output and expose sanitized provider status in `/decision`.
+
+Decision-state semantics:
+- `act_now`: current warning/critical risk in any monitored metric.
+- `watch`: no current warning/critical, but current info-level risk or forecasted elevation.
+- `normal`: no current or forecasted elevated risk.
+- `watch` is predictive guidance only and does not create formal alert-history records.
 
 ## Grafana URL Distinction
 
@@ -70,6 +96,9 @@ docker compose up --build
 - Manual/local-host mode (outside compose) should use `http://127.0.0.1:8000`.
 
 The provisioned dashboard is optimized for compose mode and expects the internal API URL.
+Datasource provisioning also allowlists `http://api:8000` for Infinity URL mode.
+The dashboard default time range is `now-5y` so historical seeded data is visible on first load.
+Auth-code evidence is rendered as readable dashboard strings such as `51 Insufficient funds x6` while the API still keeps the structured top-code tuples for machine consumers.
 
 ## Manual Setup (Fallback)
 
