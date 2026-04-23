@@ -31,7 +31,8 @@ The system has two analysis tracks and one reviewer-facing presentation layer.
 - Reads minute-level status totals from `database/transactions.csv`.
 - Reads minute-level auth-code totals from `database/transactions_auth_codes.csv`.
 - Computes baseline-aware anomaly decisions for denied/failed/reversed behavior.
-- Exposes outputs via `/monitor`, `/metrics`, `/alerts`, and `/decision`.
+- Exposes outputs via aggregate replay (`/monitor`), single-event ingestion (`/monitor/transaction`), `/metrics`, `/alerts`, and `/decision`.
+- Reports formal alerts through the local aggregate log and, when configured, a team-facing webhook target.
 
 3. Presentation and conclusions
 - Charts in `charts/`.
@@ -75,6 +76,11 @@ Alert recommendation behavior:
 - return `alert` when rate behavior materially exceeds threshold conditions
 - deduplicate repeated equivalent alert conditions during cooldown windows
 
+Ingestion modes:
+
+- `POST /monitor` accepts a pre-aggregated minute window and is the primary dataset replay path.
+- `POST /monitor/transaction` accepts a single transaction event (`timestamp`, `status`, optional `auth_code`), normalizes it to a minute bucket, and evaluates the accumulated bucket through the same anomaly engine.
+
 ### Decision Guidance Logic (`GET /decision`)
 
 The decision layer is built from current runtime state and does not alter formal alert generation.
@@ -83,6 +89,7 @@ Local-authoritative behavior:
 - computes priority ranking across `denied`, `failed`, and `reversed`
 - computes bounded risk score (`0..100`)
 - computes confidence from history depth + current volume
+- computes deterministic business-impact fields (`above_normal_rate`, `forecast_above_normal_rate`, `warning_gap_rate`, excess-transaction projections)
 - returns recommended action, root-cause hint, and top auth-code clues
 
 Locked overall-status mapping:
@@ -94,19 +101,41 @@ Predictive separation rule:
 - `watch` is guidance only and does not write new entries to `/alerts`.
 - formal alert history remains tied to `/monitor` threshold breaches and cooldown rules.
 
+Business-impact derivation:
+- `above_normal_rate = max(0, current_rate - baseline_rate)`
+- `forecast_above_normal_rate = max(0, forecast_rate - baseline_rate)` when forecast exists
+- `warning_gap_rate = max(0, warning_threshold - current_rate)` using the same warning-threshold formula as formal alerting
+- `excess_transactions_now = round(above_normal_rate * total)`
+- `projected_excess_transactions_horizon = round(forecast_above_normal_rate * total)` using current window volume as deterministic proxy
+- metric ownership mapping:
+  - denied -> customer payment friction / issuer-acquirer ops
+  - failed -> processing reliability / platform-gateway engineering
+  - reversed -> reconciliation integrity / finance-reconciliation ops
+
 ### Forecast Method
 
 Default parameters (unless overridden by env):
 - lookback window: 15 minutes
 - horizon: 30 minutes
 - step: 5 minutes
-- minimum history points: 5
+- minimum history points: 1 (demo default; recommended production value is 5)
 
 Computation:
 - weighted moving average over retained points with weights `1..N`
 - slope from arithmetic mean of consecutive per-minute deltas
 - bounded forecast rates to valid range `0.0..1.0`
 - when history is insufficient, forecast output is omitted and confidence remains lower
+- when minimum history points is set to 1, forecast text includes a warning that this is test/demo-only and recommends 5
+
+### Dashboard Recent-Focus Window
+
+- Focus selection sorts timestamps, splits clusters on gaps greater than `90 minutes`, and prefers the newest cluster with at least `5` points; if none are eligible, it falls back to the newest cluster.
+- `GET /metrics/focus?bucket=hour|minute` returns the same metrics schema as `/metrics`, but filtered to the selected focus cluster and optionally aggregated to hourly buckets.
+- `GET /decision/focus` returns the same decision schema as `/decision`, scoped to the selected focus cluster so forecast/evidence align with the dashboard time window.
+- `GET /decision/forecast/focus` reshapes the focused forecast into relative-horizon rows with `minutes_ahead`, `horizon_label`, per-metric forecast rates, and `max_rate` for panel-friendly visualization.
+- Grafana renders `dashboard.json` from `dashboard.template.json` using the selected cluster start and an end time extended through the forecast horizon.
+- The `What Could Get Worse In The Forecast Window` panel intentionally does not use the dashboard-wide absolute time axis; it renders the same focused forecast against adaptive relative horizon labels such as `+5m`, `+10m`, and `+15m`.
+- `GET /metrics/recent?days=N` remains available as a compatibility endpoint for latest-anchored slicing outside the dashboard flow.
 
 ### Optional External Narrative Mode
 
@@ -116,9 +145,10 @@ Supported providers:
 - `openai`
 - `anthropic`
 - `google`
+- `openai` may optionally use an OpenAI-compatible endpoint via `EXTERNAL_AI_BASE_URL` (empty keeps official OpenAI)
 
 Safety contract:
-- external provider can rewrite only `summary` and `top_recommendation`
+- external provider can rewrite only `summary`, `top_recommendation`, `problem_explanation`, and `forecast_explanation`
 - local logic remains authoritative for status/ranking/severity/risk
 - failure, timeout, or invalid external output falls back to local guidance
 - surfaced provider status is sanitized and excludes API keys/raw payloads
@@ -141,6 +171,15 @@ Auth-code data is used as triage context for anomalous windows:
 
 Auth codes enrich anomaly explanation but do not replace status-based anomaly detection.
 
+## Automatic Reporting Logic
+
+Formal alerts use a dual reporting path:
+
+- always write aggregate metadata to `logs/alerts.log`
+- optionally deliver the same aggregate payload to a configured webhook target
+
+In the one-click reviewer runtime, the webhook target defaults to a localhost mock team receiver so reviewers can validate end-to-end delivery without external services.
+
 ## Artifact Derivation Map
 
 From `database/*.csv`, the repository produces and exposes:
@@ -148,6 +187,7 @@ From `database/*.csv`, the repository produces and exposes:
 - derived checkout anomaly CSVs in `database/report/`
 - checkout charts in `charts/`
 - monitoring API outputs for dashboard queries
+- mock team notification captures in `logs/` during one-click runtime
 - dashboard visualization configuration in `grafana/`
 - written conclusions in `report/technical_report.md`
 

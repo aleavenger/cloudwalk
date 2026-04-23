@@ -3,19 +3,19 @@
 Define one-click reviewer runtime expectations so evaluators can run API and Grafana locally with secure demo defaults and minimal setup.
 ## Requirements
 ### Requirement: Reviewer stack SHALL start with a single Docker Compose command
-The repository SHALL provide a Docker Compose based runtime that allows a reviewer to start the monitoring API and Grafana through one guided bootstrap entrypoint that invokes Docker Compose.
+The repository SHALL provide a Docker Compose based runtime that allows a reviewer to start the monitoring API, Grafana, and a local mock team-notification receiver through one guided bootstrap entrypoint that invokes Docker Compose.
 
 #### Scenario: Reviewer runs one guided entrypoint
 - **WHEN** a reviewer executes the documented reviewer bootstrap script
-- **THEN** the repository SHALL prepare local reviewer configuration, start the API and Grafana services, run smoke validation, and print the resulting access details without requiring manual Python or Grafana installation steps
+- **THEN** the repository SHALL prepare local reviewer configuration, start the API, Grafana, and mock notification receiver services, run smoke validation, and print the resulting access details without requiring manual Python or Grafana installation steps
 
 #### Scenario: Services are reachable after startup
 - **WHEN** the reviewer bootstrap flow finishes successfully
-- **THEN** the API health endpoint and the Grafana web UI SHALL both be reachable on their documented localhost URLs
+- **THEN** the API health endpoint, the Grafana web UI, and the local mock notification receiver SHALL all be reachable on their documented localhost URLs
 
 #### Scenario: Reviewer ports are localhost-only
 - **WHEN** the reviewer stack publishes its services
-- **THEN** the API and Grafana services SHALL be bound to localhost rather than all network interfaces
+- **THEN** the API, Grafana, and mock notification receiver SHALL be bound to localhost rather than all network interfaces
 
 ### Requirement: One-click mode SHALL preserve secured API access
 The one-click reviewer runtime SHALL keep API-key protection enabled for secured monitoring endpoints while ensuring the provisioned dashboard can access them successfully.
@@ -35,9 +35,13 @@ The one-click reviewer runtime SHALL keep API-key protection enabled for secured
 ### Requirement: Reviewer bootstrap SHALL support provider-mode selection safely
 The reviewer bootstrap flow SHALL let the reviewer choose between local decision guidance and optional external-provider-backed narrative enhancement without weakening the local-safe defaults.
 
+#### Scenario: Reviewer bootstrap prefers external mode
+- **WHEN** the reviewer starts the guided bootstrap flow
+- **THEN** the provider-mode prompt SHALL default to `external` rather than `local`
+
 #### Scenario: Reviewer selects local mode
 - **WHEN** the reviewer chooses local mode
-- **THEN** the bootstrap flow SHALL configure the stack without requiring any external provider API key
+- **THEN** the bootstrap flow SHALL configure the stack without requiring any external provider API key and SHALL describe local mode as a deterministic fallback with less narrative polish rather than a broken mode
 
 #### Scenario: Reviewer selects external mode
 - **WHEN** the reviewer chooses external mode
@@ -58,15 +62,33 @@ The reviewer bootstrap flow SHALL let the reviewer choose between local decision
 ### Requirement: Reviewer bootstrap SHALL validate and message the environment
 The reviewer bootstrap flow SHALL tell the reviewer what is available after startup and confirm the environment is working before declaring success.
 
+#### Scenario: Bootstrap prints reviewer-facing provider guidance
+- **WHEN** the reviewer bootstrap finishes successfully
+- **THEN** it SHALL print the selected provider mode, explain whether richer external narrative is active, and explain the local deterministic fallback when external mode is unavailable
+
 #### Scenario: Bootstrap runs smoke validation
 - **WHEN** the reviewer bootstrap starts the stack
 - **THEN** it SHALL run the documented smoke checks before reporting the environment as ready
 
+#### Scenario: Smoke validation confirms team notification delivery
+- **WHEN** the one-click runtime executes its smoke checks
+- **THEN** the validation flow SHALL trigger a known alert and verify that the local mock notification receiver recorded the expected team-notification payload
+
 #### Scenario: Bootstrap prints first-login details
 - **WHEN** the reviewer bootstrap finishes successfully
-- **THEN** it SHALL print the Grafana URL, Grafana admin credentials, selected provider mode, and the command needed to stop the stack
+- **THEN** it SHALL print the Grafana URL, Grafana admin credentials, selected provider mode, the local mock notification receiver URL, and the command needed to stop the stack
 
 #### Scenario: Bootstrap avoids exposing non-demo API keys in terminal output
 - **WHEN** the reviewer bootstrap completes with non-demo API-key values
 - **THEN** it SHALL avoid printing raw API-key values and SHALL print only a safe reference to where that key is stored
 
+### Requirement: One-click mode SHALL provide a default local team notification target
+The one-click reviewer runtime SHALL provision the monitoring service with a working local team-notification webhook target so reviewers can observe automatic alert reporting without external dependencies.
+
+#### Scenario: Demo webhook target is configured automatically
+- **WHEN** the reviewer stack starts with its default local configuration
+- **THEN** the monitoring service SHALL receive a default internal/local webhook URL for the mock notification receiver without requiring manual env edits
+
+#### Scenario: Local team notification target remains reviewer-safe
+- **WHEN** the mock notification receiver is started in the one-click runtime
+- **THEN** it SHALL remain a localhost-only/demo component rather than an externally exposed production notification path

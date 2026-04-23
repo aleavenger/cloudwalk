@@ -3,7 +3,7 @@
 Define dashboard, reporting, and reviewer-facing deliverables so anomaly insights are observable, reproducible, and easy to evaluate.
 ## Requirements
 ### Requirement: Submission SHALL provide Grafana-ready monitoring views
-The repository SHALL include dashboard assets and supporting data contracts that allow a reviewer to visualize transaction health, operator priorities, predictive risk, and recent formal alert activity in Grafana.
+The repository SHALL include dashboard assets and supporting data contracts that allow a reviewer to visualize transaction health, operator priorities, predictive risk, business impact, and recent formal alert activity in Grafana without having to translate internal field names into reviewer-facing meaning.
 
 The implementation SHALL assume:
 - datasource plugin: `yesoreyeram-infinity-datasource`
@@ -15,17 +15,88 @@ The implementation SHALL assume:
 - time field name for dashboard panels: `timestamp`
 - pinned plugin version documented in README and Grafana setup notes
 
-#### Scenario: Dashboard includes decision-first monitoring panels
+#### Scenario: Dashboard includes reviewer-first business-impact panels
 - **WHEN** the Grafana dashboard is imported and connected to the local monitoring service
-- **THEN** it SHALL present panels for overall monitoring status, top recommendation, priority-ranked risks, forecast risk, recent formal alerts, transaction volume context, and reviewer-facing first-login guidance
+- **THEN** it SHALL present panels for overall monitoring status, top recommendation, business impact, priority-ranked risks, forecast risk, recent formal alerts, transaction volume context, and reviewer-facing first-login guidance
+- **AND** those panels SHALL use reviewer-facing titles that directly describe what the reviewer is learning from each panel rather than terse internal shorthand
 
-#### Scenario: Dashboard supports anomaly drilldown
+#### Scenario: Dashboard supports anomaly drilldown with above-normal context
 - **WHEN** an anomalous or elevated-risk window is viewed in the monitoring workflow
-- **THEN** the visualization layer SHALL provide enough context to inspect current rate, baseline delta, recent evidence, and relevant authorization-code clues rather than only showing aggregate totals
+- **THEN** the visualization layer SHALL provide enough context to inspect current rate, baseline delta, excess affected transactions, threshold proximity, recent evidence, and relevant authorization-code clues rather than only showing aggregate totals
+
+#### Scenario: Dashboard labels explain metric meaning directly
+- **WHEN** Grafana renders decision, business-impact, evidence, and alert tables
+- **THEN** visible panel titles and column headers SHALL explain the reviewer-facing meaning of the data instead of exposing raw internal field names such as `above_normal_rate`, `warning_gap_rate`, or `top_metric` as the primary label text
+
+#### Scenario: Dashboard title and header mapping is implemented as an exact contract
+- **WHEN** the reviewer-facing copy update is implemented for the provisioned dashboard
+- **THEN** panel titles SHALL match this exact mapping:
+- `Decision Snapshot` -> `What Needs Attention Right Now`
+- `Priority Queue` -> `Why Each Metric Is Ranked This Way`
+- `Forecast Risk` -> `What Could Get Worse In The Forecast Window`
+- `Recent Evidence` -> `Evidence Behind The Current Recommendation`
+- `Business Impact` -> `What This Top Issue Means For The Business`
+- `Recent Formal Alerts` -> `Formal Alerts That Have Already Fired`
+- `Risk Trend by Metric` -> `How Risk Rates Are Moving Over Time`
+- `Transaction Volume Context` -> `How Much Traffic These Rates Represent`
+- `Reviewer First Login` -> `How To Read This Dashboard On First Login`
+- **AND** visible table-column labels SHALL match this exact mapping:
+- `generated_at` -> `Decision generated at`
+- `overall_status` -> `Overall status right now`
+- `top_recommendation` -> `What the reviewer should do next`
+- `summary` -> `Why this issue is ranked first`
+- `problem_explanation` -> `What is above normal and why it matters`
+- `forecast_explanation` -> `What may happen next`
+- `metric` -> `Metric under review`
+- `decision_status` -> `Action level now`
+- `current_severity` -> `Formal alert severity now`
+- `risk_score` -> `Priority score (0-100)`
+- `confidence` -> `Confidence in this ranking (%)`
+- `current_rate` -> `Current rate now (%)`
+- `baseline_rate` -> `Typical baseline rate (%)`
+- `forecast_rate` -> `Forecast rate within horizon (%)`
+- `denied_rate` (trend/forecast charts) -> `Denied rate (%)`
+- `failed_rate` (trend/forecast charts) -> `Failed rate (%)`
+- `reversed_rate` (trend/forecast charts) -> `Reversed rate (%)`
+- `above_normal_rate` -> `Above baseline now (percentage points)`
+- `forecast_above_normal_rate` -> `Above baseline within forecast horizon (percentage points)`
+- `warning_gap_rate` -> `Gap before formal warning (percentage points remaining)`
+- `excess_transactions_now` -> `Extra affected transactions now (approx.)`
+- `projected_excess_transactions_horizon` -> `Extra affected transactions within forecast horizon (approx.)`
+- `domain_label` -> `Business area affected`
+- `likely_owner` -> `Team likely to act`
+- `top_auth_codes_display` -> `Top authorization-code clues`
+- `recommended_action` -> `Recommended next step`
+- `timestamp` (evidence/alerts tables) -> `Recorded at`
+- `source` -> `Evidence source`
+- `message` -> `What this evidence says`
+- `auth_code_top_display` -> `Supporting authorization-code context`
+- `top_metric` -> `Top metric driving the issue`
+- `severity` -> `Formal alert severity`
+- `notification_status` -> `Formal alert handling result`
+- `reason` -> `Why the formal alert fired`
+- `horizon_label` -> `Forecast horizon`
+- `Time` (trend/volume charts) -> `Time`
+- `total` -> `Transactions in this time bucket`
+
+#### Scenario: Only visible presentation labels change
+- **WHEN** the explanatory dashboard/report copy change is implemented
+- **THEN** the scope of "headers" SHALL be limited to Grafana panel titles, visible Grafana field labels, visible chart-series labels, report section headings, and report numeric callouts/examples
+- **AND** the change SHALL NOT rename API JSON field names, Grafana selectors, backend schema/type names, or environment/config variable names
 
 #### Scenario: Dashboard distinguishes predictive guidance from formal alerts
 - **WHEN** the dashboard shows both forecasted risk and current alerts
 - **THEN** it SHALL make clear which states are predictive/watch guidance and which states represent formal alert history
+
+#### Scenario: Dashboard uses narrated numeric formatting while preserving raw values
+- **WHEN** Grafana renders decision and priority fields from the API
+- **THEN** it SHALL present confidence and rate values in reviewer-friendly percentage formats
+- **AND** it SHALL label above-normal and warning-gap fields as percentage-point-style deltas and count fields as approximate whole-number impact values
+- **AND** it SHALL do so without requiring the API contract to replace raw numeric fields with strings
+
+#### Scenario: Chart legends avoid raw snake_case labels
+- **WHEN** the reviewer reads the forecast-risk and risk-trend charts
+- **THEN** visible chart-series labels SHALL use reviewer-facing names instead of raw field names such as `denied_rate`, `failed_rate`, or `reversed_rate`
 
 #### Scenario: Dashboard explains first-login reviewer details
 - **WHEN** the reviewer opens the provisioned dashboard for the first time
@@ -63,7 +134,7 @@ The submission SHALL use `transactions_auth_codes.csv` to help explain anomalous
 - **THEN** it SHALL describe whether the anomaly appears concentrated in a small number of authorization codes or spread across multiple codes
 
 ### Requirement: Submission SHALL include reviewer-facing documentation
-The repository SHALL include a technical report and startup instructions that explain the problem, the implemented solution, how to run it, and the main findings from the provided datasets.
+The repository SHALL include a technical report and startup instructions that explain the problem, the implemented solution, how to run it, and the main findings from the provided datasets in reviewer-facing language that does not require the reader to decode internal shorthand.
 
 #### Scenario: Reviewer can start the project from repository documentation
 - **WHEN** a reviewer opens the repository without prior context
@@ -71,7 +142,16 @@ The repository SHALL include a technical report and startup instructions that ex
 
 #### Scenario: Technical report explains methods and limitations
 - **WHEN** the reviewer reads the report
-- **THEN** it SHALL document the anomaly methodology, the alerting approach, the decision-guidance approach, and the known limitations of the local implementation
+- **THEN** it SHALL document the anomaly methodology, the alerting approach, the decision-guidance approach, the automatic team-notification approach, and the known limitations of the local implementation
+
+#### Scenario: Technical report headings and numeric callouts explain meaning directly
+- **WHEN** the reviewer reads the technical report
+- **THEN** section headings SHALL describe what each section explains in reviewer language rather than relying on terse internal headings alone
+- **AND** numeric thresholds, counts, and anomaly examples SHALL explain what each value means operationally instead of appearing only as shorthand bullets
+
+#### Scenario: Report maps implementation back to prompt requirements
+- **WHEN** the reviewer checks the repository against `database/monitoring-test.md`
+- **THEN** the technical report SHALL explain which runtime artifact satisfies the required monitoring endpoint, real-time visualization, anomaly model, and automatic anomaly reporting responsibilities
 
 #### Scenario: Docker Compose is the primary reviewer path
 - **WHEN** the reviewer follows the README startup instructions
@@ -85,3 +165,22 @@ The repository SHALL include a technical report and startup instructions that ex
 - **WHEN** the reviewer configures local or external decision guidance
 - **THEN** the documentation SHALL explain the default local mode, optional external mode, and fallback behavior when the external provider is unavailable
 
+#### Scenario: Documentation explains reviewer-preferred provider behavior
+- **WHEN** the reviewer follows the primary bootstrap flow
+- **THEN** the README and first-login guidance SHALL explain that external AI is the preferred reviewer path for richer narrative output while local mode remains a safe deterministic fallback
+
+#### Scenario: Technical report explains business-impact interpretation
+- **WHEN** the reviewer reads the report
+- **THEN** it SHALL explain how above-normal deltas, excess affected transactions, and likely owner mappings are derived from the monitoring data
+
+#### Scenario: Documentation distinguishes presentation explanation from API contract
+- **WHEN** the reviewer reads the README, methodology notes, or technical report
+- **THEN** those documents SHALL explain that reviewer-facing dashboard/report wording is more descriptive while the underlying API fields remain raw numeric and machine-readable
+
+#### Scenario: Documentation distinguishes aggregate and event ingestion paths
+- **WHEN** a reviewer reads the monitoring API documentation
+- **THEN** the repository SHALL explain that `POST /monitor` is the aggregate window replay endpoint and `POST /monitor/transaction` is the additive single-event ingestion endpoint
+
+#### Scenario: Documentation matches runtime provisioning behavior
+- **WHEN** the reviewer follows the README and report setup notes
+- **THEN** those documents SHALL describe the compose-provisioned Grafana plugin/runtime and SHALL NOT require manual steps that the one-click stack already performs automatically

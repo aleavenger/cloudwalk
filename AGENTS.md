@@ -9,6 +9,18 @@ Architecture contracts:
 
 Agents must read these files before non-trivial changes.
 
+## Delegation and Model Policy
+
+- For coding work, always use subagents when there is any bounded separable implementation, debugging, or verification task that can run in parallel without reducing quality.
+- Keep work local only for truly tiny fixes or work that is fully serial and would not benefit from delegation.
+- Prefer cheaper models when they can complete the task without making results worse.
+- Prefer `codex` models for coding tasks and `gpt` models for reasoning, planning, review, and synthesis.
+- Do not use high-end models for scraping the web, scavenging the repository, or scavenging databases/logs when a cheaper capable model can do the job.
+- Model ladder:
+  - coding: `gpt-5.1-codex-mini` first, then `gpt-5.2-codex`, then stronger `codex` only for materially complex or high-risk work
+  - reasoning: `gpt-5.2` first, escalate to `gpt-5.4` only when needed
+- If a preferred model is unavailable, use the next available model that follows the same lane and cost rules.
+
 ## Debugging Protocol
 
 1. Identify observable failure (test, response, log, or generated artifact).

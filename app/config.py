@@ -16,6 +16,8 @@ class Settings:
     host: str
     port: int
     monitoring_api_key: str | None
+    team_notification_webhook_url: str | None
+    team_notification_timeout_seconds: float
     max_monitor_request_bytes: int
     max_count_value: int
     max_auth_code_keys: int
@@ -37,6 +39,7 @@ class Settings:
     external_ai_provider: ExternalAIProvider | None
     external_ai_model: str | None
     external_ai_api_key: str | None
+    external_ai_base_url: str | None
     external_ai_timeout_seconds: float
 
 
@@ -57,6 +60,8 @@ def load_settings() -> Settings:
         host=os.getenv("HOST", "127.0.0.1"),
         port=int(os.getenv("PORT", "8000")),
         monitoring_api_key=os.getenv("MONITORING_API_KEY"),
+        team_notification_webhook_url=(os.getenv("TEAM_NOTIFICATION_WEBHOOK_URL") or "").strip() or None,
+        team_notification_timeout_seconds=float(os.getenv("TEAM_NOTIFICATION_TIMEOUT_SECONDS", "5")),
         max_monitor_request_bytes=int(os.getenv("MAX_MONITOR_REQUEST_BYTES", "65536")),
         max_count_value=int(os.getenv("MAX_COUNT_VALUE", "1000000")),
         max_auth_code_keys=int(os.getenv("MAX_AUTH_CODE_KEYS", "32")),
@@ -74,9 +79,10 @@ def load_settings() -> Settings:
         decision_lookback_minutes=int(os.getenv("DECISION_LOOKBACK_MINUTES", "15")),
         decision_forecast_horizon_minutes=int(os.getenv("DECISION_FORECAST_HORIZON_MINUTES", "30")),
         decision_forecast_step_minutes=int(os.getenv("DECISION_FORECAST_STEP_MINUTES", "5")),
-        decision_min_history_points=int(os.getenv("DECISION_MIN_HISTORY_POINTS", "5")),
+        decision_min_history_points=int(os.getenv("DECISION_MIN_HISTORY_POINTS", "1")),
         external_ai_provider=external_ai_provider,
         external_ai_model=os.getenv("EXTERNAL_AI_MODEL"),
         external_ai_api_key=os.getenv("EXTERNAL_AI_API_KEY"),
+        external_ai_base_url=(os.getenv("EXTERNAL_AI_BASE_URL") or "").strip() or None,
         external_ai_timeout_seconds=float(os.getenv("EXTERNAL_AI_TIMEOUT_SECONDS", "10")),
     )

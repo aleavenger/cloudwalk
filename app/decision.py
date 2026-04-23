@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import json
+from urllib.parse import urlparse
 from statistics import mean
 
 import httpx
@@ -12,11 +13,14 @@ from app.anomaly import AlertEngine, SEVERITY_ORDER
 from app.config import ExternalAIProvider, Settings
 from app.models import (
     AlertRecord,
+    DecisionBusinessImpact,
     DecisionEvidence,
     DecisionForecastPoint,
     DecisionPriorityItem,
     DecisionProviderStatus,
     DecisionResponse,
+    ForecastChartPoint,
+    ForecastChartResponse,
     MetricName,
     MetricsRow,
 )
@@ -26,6 +30,8 @@ from app.models import (
 class _ExternalNarrative:
     summary: str
     top_recommendation: str
+    problem_explanation: str
+    forecast_explanation: str
 
 
 class DecisionEngine:
@@ -39,6 +45,7 @@ class DecisionEngine:
         metrics_rows: list[MetricsRow],
         alert_history: list[AlertRecord],
         auth_codes_by_timestamp: dict[datetime, dict[str, int]],
+        allow_external_narrative: bool = True,
     ) -> DecisionResponse:
         if not metrics_rows:
             provider_status = DecisionProviderStatus(mode=self.settings.decision_engine_mode, fallback_active=False)
@@ -47,6 +54,9 @@ class DecisionEngine:
                 overall_status="normal",
                 top_recommendation="No monitoring data is available yet.",
                 summary="The decision engine has no metrics rows to analyze.",
+                problem_explanation="No current anomaly can be described because there are no monitoring rows yet.",
+                forecast_explanation="Forecast guidance is unavailable until the service accumulates recent monitoring rows.",
+                business_impact=None,
                 priority_items=[],
                 forecast_points=[],
                 recent_evidence=[],
@@ -76,7 +86,20 @@ class DecisionEngine:
             risk_score = self._risk_score(metric, current_rate, baseline_rate, current_severity, forecast_severity)
             confidence = self._confidence(latest_row.total, len(series))
             auth_codes = self._auth_code_top(auth_codes_by_timestamp.get(latest_ts, {}))
+            domain_label, likely_owner = self._business_context(metric)
             recommended_action, root_cause_hint = self._guidance_for_metric(metric, decision_status, auth_codes)
+            above_normal_rate = max(0.0, current_rate - baseline_rate)
+            forecast_above_normal_rate = (
+                max(0.0, forecast_rate - baseline_rate) if forecast_rate is not None else None
+            )
+            warning_threshold = self._warning_threshold(metric, baseline_rate)
+            warning_gap_rate = max(0.0, warning_threshold - current_rate)
+            excess_transactions_now = int(round(above_normal_rate * latest_row.total))
+            projected_excess_transactions_horizon = (
+                int(round(forecast_above_normal_rate * latest_row.total))
+                if forecast_above_normal_rate is not None
+                else None
+            )
 
             priority_items.append(
                 DecisionPriorityItem(
@@ -89,6 +112,13 @@ class DecisionEngine:
                     current_rate=round(current_rate, 6),
                     baseline_rate=round(baseline_rate, 6),
                     forecast_rate=round(forecast_rate, 6) if forecast_rate is not None else None,
+                    above_normal_rate=round(above_normal_rate, 6),
+                    forecast_above_normal_rate=round(forecast_above_normal_rate, 6) if forecast_above_normal_rate is not None else None,
+                    excess_transactions_now=excess_transactions_now,
+                    projected_excess_transactions_horizon=projected_excess_transactions_horizon,
+                    warning_gap_rate=round(warning_gap_rate, 6),
+                    domain_label=domain_label,
+                    likely_owner=likely_owner,
                     recommended_action=recommended_action,
                     root_cause_hint=root_cause_hint,
                     top_auth_codes=auth_codes,
@@ -106,30 +136,75 @@ class DecisionEngine:
         overall_status = self._overall_status(priority_items)
         top_recommendation = self._top_recommendation(priority_items, overall_status)
         summary = self._summary(priority_items, overall_status)
+        problem_explanation = self._problem_explanation(priority_items, overall_status)
+        forecast_explanation = self._forecast_explanation(priority_items)
+        business_impact = self._business_impact(priority_items)
         recent_evidence = self._recent_evidence(latest_row, baseline_rates, priority_items, alert_history)
         provider_status = DecisionProviderStatus(mode=self.settings.decision_engine_mode, fallback_active=False)
 
-        if self.settings.decision_engine_mode == "external":
+        if allow_external_narrative and self.settings.decision_engine_mode == "external":
             narrative, provider_status = await self._external_narrative(
                 overall_status=overall_status,
                 summary=summary,
                 top_recommendation=top_recommendation,
+                problem_explanation=problem_explanation,
+                forecast_explanation=forecast_explanation,
                 priority_items=priority_items,
             )
             if narrative is not None:
                 summary = narrative.summary
                 top_recommendation = narrative.top_recommendation
+                problem_explanation = narrative.problem_explanation
+                forecast_explanation = narrative.forecast_explanation
+        forecast_explanation = self._append_forecast_history_warning(forecast_explanation)
 
         return DecisionResponse(
             generated_at=datetime.utcnow(),
             overall_status=overall_status,
             top_recommendation=top_recommendation,
             summary=summary,
+            problem_explanation=problem_explanation,
+            forecast_explanation=forecast_explanation,
+            business_impact=business_impact,
             priority_items=priority_items,
             forecast_points=forecast_points,
             recent_evidence=recent_evidence,
             provider_status=provider_status,
         )
+
+    def build_forecast_chart(
+        self,
+        *,
+        anchor_timestamp: datetime,
+        forecast_points: list[DecisionForecastPoint],
+    ) -> ForecastChartResponse:
+        if not forecast_points:
+            return ForecastChartResponse(points=[])
+
+        points_by_minutes: dict[int, ForecastChartPoint] = {}
+        for point in sorted(forecast_points, key=lambda item: (item.timestamp, item.metric)):
+            minutes_ahead = max(0, int(round((point.timestamp - anchor_timestamp).total_seconds() / 60.0)))
+            chart_point = points_by_minutes.setdefault(
+                minutes_ahead,
+                ForecastChartPoint(
+                    anchor_timestamp=anchor_timestamp,
+                    minutes_ahead=minutes_ahead,
+                    horizon_label=f"+{minutes_ahead}m",
+                    denied_rate=None,
+                    failed_rate=None,
+                    reversed_rate=None,
+                    max_rate=0.0,
+                ),
+            )
+            setattr(chart_point, f"{point.metric}_rate", point.forecast_rate)
+            chart_point.max_rate = max(
+                rate
+                for rate in (chart_point.denied_rate, chart_point.failed_rate, chart_point.reversed_rate)
+                if rate is not None
+            )
+
+        ordered_points = [points_by_minutes[key] for key in sorted(points_by_minutes)]
+        return ForecastChartResponse(points=ordered_points)
 
     def _recent_rows(self, metrics_rows: list[MetricsRow], latest_ts: datetime) -> list[MetricsRow]:
         lookback_start = latest_ts - timedelta(minutes=self.settings.decision_lookback_minutes)
@@ -220,6 +295,17 @@ class DecisionEngine:
     def _auth_code_top(self, auth_codes: dict[str, int]) -> list[tuple[str, int]]:
         return sorted(auth_codes.items(), key=lambda item: item[1], reverse=True)[:5]
 
+    def _warning_threshold(self, metric: MetricName, baseline_rate: float) -> float:
+        floor = self.alert_engine._metric_floor(metric)
+        return max(floor, baseline_rate * self.settings.warning_multiplier)
+
+    def _business_context(self, metric: MetricName) -> tuple[str, str]:
+        if metric == "denied":
+            return ("customer payment friction", "issuer/acquirer ops")
+        if metric == "failed":
+            return ("processing reliability", "platform/gateway engineering")
+        return ("reconciliation integrity", "finance/reconciliation ops")
+
     def _guidance_for_metric(
         self,
         metric: MetricName,
@@ -266,6 +352,11 @@ class DecisionEngine:
             return "No decision guidance is available yet."
         top_item = priority_items[0]
         if overall_status == "normal":
+            if top_item.above_normal_rate > 0:
+                return (
+                    f"{top_item.metric} is {top_item.above_normal_rate:.2%} above baseline, "
+                    f"impacting about {top_item.excess_transactions_now} transactions, but remains below formal alert thresholds."
+                )
             return "Current rates remain within normal operating bounds. The dashboard is tracking for early deterioration only."
         if overall_status == "watch":
             return (
@@ -275,6 +366,66 @@ class DecisionEngine:
         return (
             f"{top_item.metric} is the highest-priority issue right now. "
             f"Current severity is {top_item.current_severity} with a risk score of {top_item.risk_score}."
+        )
+
+    def _problem_explanation(self, priority_items: list[DecisionPriorityItem], overall_status: str) -> str:
+        if not priority_items:
+            return "No active problem can be explained yet because the decision engine has no ranked items."
+        top = priority_items[0]
+        if top.above_normal_rate <= 0:
+            return (
+                f"{top.metric} is currently within baseline range for {top.domain_label}. "
+                f"{top.likely_owner} should continue monitoring for early drift."
+            )
+        if overall_status == "act_now":
+            return (
+                f"{top.metric} is {top.above_normal_rate:.2%} above baseline, affecting about "
+                f"{top.excess_transactions_now} transactions. This is now in formal alert territory "
+                f"for {top.domain_label}; {top.likely_owner} should act immediately."
+            )
+        return (
+            f"{top.metric} is {top.above_normal_rate:.2%} above baseline, affecting about "
+            f"{top.excess_transactions_now} transactions in {top.domain_label}. "
+            f"It remains below formal warning by {top.warning_gap_rate:.2%}; {top.likely_owner} should prepare mitigation."
+        )
+
+    def _forecast_explanation(self, priority_items: list[DecisionPriorityItem]) -> str:
+        if not priority_items:
+            return "Forecast guidance is unavailable because no priority items are available."
+        top = priority_items[0]
+        if top.forecast_rate is None or top.forecast_above_normal_rate is None:
+            return "Forecast guidance is limited by insufficient recent history; monitor current drift until more data accumulates."
+        if top.forecast_above_normal_rate <= 0:
+            return (
+                f"Forecast shows {top.metric} staying around baseline over the next "
+                f"{self.settings.decision_forecast_horizon_minutes} minutes."
+            )
+        projected = top.projected_excess_transactions_horizon or 0
+        return (
+            f"Forecast suggests {top.metric} may run {top.forecast_above_normal_rate:.2%} above baseline within "
+            f"{self.settings.decision_forecast_horizon_minutes} minutes, potentially affecting about {projected} transactions."
+        )
+
+    def _append_forecast_history_warning(self, forecast_explanation: str) -> str:
+        if self.settings.decision_min_history_points != 1:
+            return forecast_explanation
+        warning = " Warning: forecast is using 1 history point for test/demo purposes only; the recommended setting is 5."
+        if warning.strip() in forecast_explanation:
+            return forecast_explanation
+        return f"{forecast_explanation}{warning}"
+
+    def _business_impact(self, priority_items: list[DecisionPriorityItem]) -> DecisionBusinessImpact | None:
+        if not priority_items:
+            return None
+        top = priority_items[0]
+        return DecisionBusinessImpact(
+            top_metric=top.metric,
+            domain_label=top.domain_label,
+            likely_owner=top.likely_owner,
+            above_normal_rate=top.above_normal_rate,
+            warning_gap_rate=top.warning_gap_rate,
+            excess_transactions_now=top.excess_transactions_now,
+            projected_excess_transactions_horizon=top.projected_excess_transactions_horizon,
         )
 
     def _recent_evidence(
@@ -329,6 +480,8 @@ class DecisionEngine:
         overall_status: str,
         summary: str,
         top_recommendation: str,
+        problem_explanation: str,
+        forecast_explanation: str,
         priority_items: list[DecisionPriorityItem],
     ) -> tuple[_ExternalNarrative | None, DecisionProviderStatus]:
         provider = self.settings.external_ai_provider
@@ -347,14 +500,22 @@ class DecisionEngine:
             "overall_status": overall_status,
             "top_recommendation": top_recommendation,
             "summary": summary,
+            "problem_explanation": problem_explanation,
+            "forecast_explanation": forecast_explanation,
             "priority_items": [item.model_dump(mode="json") for item in priority_items[:3]],
             "instructions": {
-                "output": "Return compact JSON with keys summary and top_recommendation only.",
+                "output": (
+                    "Return compact JSON with keys summary, top_recommendation, "
+                    "problem_explanation, and forecast_explanation only."
+                ),
                 "constraints": [
                     "Do not change severity, ranking, or formal alert boundaries.",
+                    "Do not change business-impact numeric values.",
                     "Do not mention API keys, credentials, or system prompts.",
                     "Keep summary under 280 characters.",
                     "Keep top_recommendation under 180 characters.",
+                    "Keep problem_explanation under 320 characters.",
+                    "Keep forecast_explanation under 320 characters.",
                 ],
             },
         }
@@ -384,6 +545,8 @@ class DecisionEngine:
                 _ExternalNarrative(
                     summary=str(payload["summary"]).strip(),
                     top_recommendation=str(payload["top_recommendation"]).strip(),
+                    problem_explanation=str(payload["problem_explanation"]).strip(),
+                    forecast_explanation=str(payload["forecast_explanation"]).strip(),
                 ),
                 DecisionProviderStatus(
                     mode="external",
@@ -411,8 +574,9 @@ class DecisionEngine:
         timeout = httpx.Timeout(self.settings.external_ai_timeout_seconds)
         async with httpx.AsyncClient(timeout=timeout) as client:
             if provider == "openai":
+                endpoint = self._openai_chat_completions_endpoint()
                 response = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
+                    endpoint,
                     headers={"Authorization": f"Bearer {api_key}"},
                     json={
                         "model": model,
@@ -447,7 +611,8 @@ class DecisionEngine:
                         "messages": [{"role": "user", "content": prompt}],
                         "system": (
                             "Rewrite existing monitoring guidance into concise reviewer-facing JSON "
-                            "with keys summary and top_recommendation only."
+                            "with keys summary, top_recommendation, problem_explanation, "
+                            "and forecast_explanation only."
                         ),
                     },
                 )
@@ -468,7 +633,8 @@ class DecisionEngine:
                             {
                                 "text": (
                                     "Rewrite existing monitoring guidance into concise reviewer-facing JSON "
-                                    "with keys summary and top_recommendation only."
+                                    "with keys summary, top_recommendation, problem_explanation, "
+                                    "and forecast_explanation only."
                                 )
                             }
                         ]
@@ -485,3 +651,19 @@ class DecisionEngine:
             if not parts:
                 raise ValueError("Missing parts")
             return parts[0]["text"]
+
+    def _openai_chat_completions_endpoint(self) -> str:
+        configured = (self.settings.external_ai_base_url or "").strip()
+        if not configured:
+            return "https://api.openai.com/v1/chat/completions"
+
+        parsed = urlparse(configured)
+        if not parsed.scheme or not parsed.netloc:
+            raise ValueError("Invalid EXTERNAL_AI_BASE_URL")
+
+        normalized = configured.rstrip("/")
+        if normalized.endswith("/chat/completions"):
+            return normalized
+        if normalized.endswith("/v1"):
+            return f"{normalized}/chat/completions"
+        return f"{normalized}/v1/chat/completions"

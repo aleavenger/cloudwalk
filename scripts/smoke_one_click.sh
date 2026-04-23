@@ -3,10 +3,14 @@ set -euo pipefail
 
 API_PORT="${API_PORT:-8000}"
 GRAFANA_PORT="${GRAFANA_PORT:-3000}"
+TEAM_RECEIVER_PORT="${TEAM_RECEIVER_PORT:-8010}"
 API_KEY="${MONITORING_API_KEY:-reviewer-local-demo-key}"
 
 API_URL="http://127.0.0.1:${API_PORT}"
 GRAFANA_URL="http://127.0.0.1:${GRAFANA_PORT}"
+TEAM_RECEIVER_URL="http://127.0.0.1:${TEAM_RECEIVER_PORT}"
+# Inject at current UTC minute so reviewer startup always has recent data.
+ALERT_TS="$(date -u +"%Y-%m-%d %H:%M:%S")"
 
 echo "[check] API health endpoint"
 curl -fsS "${API_URL}/health" >/dev/null
@@ -25,7 +29,7 @@ curl -fsS -H "X-API-Key: ${API_KEY}" "${API_URL}/decision" \
 
 echo "[check] Grafana health endpoint"
 for attempt in $(seq 1 12); do
-  if curl -fsS "${GRAFANA_URL}/api/health" \
+  if curl -fsS "${GRAFANA_URL}/api/health" 2>/dev/null \
     | python3 -c "import json,sys; data=json.load(sys.stdin); assert data.get('database') == 'ok'" >/dev/null 2>&1; then
     break
   fi
@@ -36,6 +40,19 @@ for attempt in $(seq 1 12); do
   sleep 2
 done
 
+echo "[check] Team notification receiver health endpoint"
+curl -fsS "${TEAM_RECEIVER_URL}/health" >/dev/null
+
+echo "[check] Team notification delivery"
+before_count="$(curl -fsS "${TEAM_RECEIVER_URL}/notifications" | python3 -c "import json,sys; data=json.load(sys.stdin); print(len(data['notifications']))")"
+curl -fsS -H "X-API-Key: ${API_KEY}" \
+  -H "content-type: application/json" \
+  -d "{\"window_end\":\"${ALERT_TS}\",\"approved\":100,\"denied\":54,\"failed\":1,\"reversed\":1,\"backend_reversed\":1,\"refunded\":1,\"auth_code_counts\":{\"51\":6,\"59\":3}}" \
+  "${API_URL}/monitor" \
+  | python3 -c "import json,sys; data=json.load(sys.stdin); assert data['recommendation'] == 'alert'; assert data['team_notification_status'] in {'sent', 'failed', 'disabled'}"
+after_count="$(curl -fsS "${TEAM_RECEIVER_URL}/notifications" | python3 -c "import json,sys; data=json.load(sys.stdin); print(len(data['notifications']))")"
+python3 -c "import sys; before_count=int(sys.argv[1]); after_count=int(sys.argv[2]); assert after_count > before_count" "${before_count}" "${after_count}"
+
 echo "[check] Generated artifacts on host"
 test -s database/report/checkout_1_anomaly.csv
 test -s database/report/checkout_2_anomaly.csv
@@ -44,5 +61,8 @@ test -s charts/checkout_2.svg
 
 echo "[check] Grafana dashboard provisioning contract"
 python3 scripts/check_grafana_dashboard_contract.py
+
+echo "[check] Grafana dashboard Playwright validation (when tooling is available)"
+./scripts/check_grafana_dashboard_playwright.sh
 
 echo "All one-click smoke checks passed."

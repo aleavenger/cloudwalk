@@ -1,0 +1,788 @@
+{
+  "title": "CloudWalk Decision-First Monitoring",
+  "uid": "cloudwalk-monitoring-test",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 7,
+  "refresh": "auto",
+  "time": {
+    "from": "now-5d",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "What Needs Attention Right Now",
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "cloudwalk-monitoring-api"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "cloudwalk-monitoring-api"
+          },
+          "source": "url",
+          "url_options": {
+            "method": "GET"
+          },
+          "type": "json",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://api:8000/decision/focus",
+          "columns": [
+            {
+              "selector": "generated_at",
+              "text": "Decision generated at",
+              "type": "timestamp"
+            },
+            {
+              "selector": "overall_status",
+              "text": "Overall status right now",
+              "type": "string"
+            },
+            {
+              "selector": "top_recommendation",
+              "text": "What the reviewer should do next",
+              "type": "string"
+            },
+            {
+              "selector": "summary",
+              "text": "Why this issue is ranked first",
+              "type": "string"
+            },
+            {
+              "selector": "problem_explanation",
+              "text": "What is above normal and why it matters",
+              "type": "string"
+            },
+            {
+              "selector": "forecast_explanation",
+              "text": "What may happen next",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "What This Top Issue Means For The Business",
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "cloudwalk-monitoring-api"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "cloudwalk-monitoring-api"
+          },
+          "source": "url",
+          "url_options": {
+            "method": "GET"
+          },
+          "type": "json",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://api:8000/decision/focus",
+          "columns": [
+            {
+              "selector": "business_impact.top_metric",
+              "text": "Top metric driving the issue",
+              "type": "string"
+            },
+            {
+              "selector": "business_impact.domain_label",
+              "text": "Business area affected",
+              "type": "string"
+            },
+            {
+              "selector": "business_impact.likely_owner",
+              "text": "Team likely to act",
+              "type": "string"
+            },
+            {
+              "selector": "business_impact.above_normal_rate",
+              "text": "Above baseline now (percentage points)",
+              "type": "number"
+            },
+            {
+              "selector": "business_impact.warning_gap_rate",
+              "text": "Gap before formal warning (percentage points remaining)",
+              "type": "number"
+            },
+            {
+              "selector": "business_impact.excess_transactions_now",
+              "text": "Extra affected transactions now (approx.)",
+              "type": "number"
+            },
+            {
+              "selector": "business_impact.projected_excess_transactions_horizon",
+              "text": "Extra affected transactions within forecast horizon (approx.)",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Above baseline now (percentage points)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Gap before formal warning (percentage points remaining)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "type": "barchart",
+      "title": "What Could Get Worse In The Forecast Window",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 11
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "cloudwalk-monitoring-api"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "cloudwalk-monitoring-api"
+          },
+          "source": "url",
+          "url_options": {
+            "method": "GET"
+          },
+          "type": "json",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://api:8000/decision/forecast/focus",
+          "root_selector": "points",
+          "columns": [
+            {
+              "selector": "horizon_label",
+              "text": "Forecast horizon",
+              "type": "string"
+            },
+            {
+              "selector": "denied_rate",
+              "text": "Denied rate (%)",
+              "type": "number"
+            },
+            {
+              "selector": "failed_rate",
+              "text": "Failed rate (%)",
+              "type": "number"
+            },
+            {
+              "selector": "reversed_rate",
+              "text": "Reversed rate (%)",
+              "type": "number"
+            },
+            {
+              "selector": "max_rate",
+              "text": "max_rate",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "fillOpacity": 70,
+            "lineWidth": 1
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "max_rate"
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": true,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "auto",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0,
+        "showValue": "never",
+        "stacking": "none",
+        "groupWidth": 0.7,
+        "barWidth": 0.95,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Evidence Behind The Current Recommendation",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 11
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "cloudwalk-monitoring-api"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "cloudwalk-monitoring-api"
+          },
+          "source": "url",
+          "url_options": {
+            "method": "GET"
+          },
+          "type": "json",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://api:8000/decision/focus",
+          "root_selector": "recent_evidence",
+          "columns": [
+            {
+              "selector": "timestamp",
+              "text": "Recorded at",
+              "type": "timestamp"
+            },
+            {
+              "selector": "source",
+              "text": "Evidence source",
+              "type": "string"
+            },
+            {
+              "selector": "message",
+              "text": "What this evidence says",
+              "type": "string"
+            },
+            {
+              "selector": "auth_code_top_display",
+              "text": "Supporting authorization-code context",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Formal Alerts That Have Already Fired",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "cloudwalk-monitoring-api"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "cloudwalk-monitoring-api"
+          },
+          "source": "url",
+          "url_options": {
+            "method": "GET"
+          },
+          "type": "json",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://api:8000/alerts",
+          "root_selector": "alerts",
+          "columns": [
+            {
+              "selector": "timestamp",
+              "text": "Recorded at",
+              "type": "timestamp"
+            },
+            {
+              "selector": "severity",
+              "text": "Formal alert severity",
+              "type": "string"
+            },
+            {
+              "selector": "notification_status",
+              "text": "Formal alert handling result",
+              "type": "string"
+            },
+            {
+              "selector": "reason",
+              "text": "Why the formal alert fired",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "How Risk Rates Are Moving Over Time",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 19
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "cloudwalk-monitoring-api"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "cloudwalk-monitoring-api"
+          },
+          "source": "url",
+          "url_options": {
+            "method": "GET"
+          },
+          "type": "json",
+          "format": "timeseries",
+          "parser": "backend",
+          "url": "http://api:8000/metrics/focus?bucket=hour",
+          "root_selector": "rows",
+          "columns": [
+            {
+              "selector": "timestamp",
+              "text": "Time",
+              "type": "timestamp"
+            },
+            {
+              "selector": "denied_rate",
+              "text": "Denied rate (%)",
+              "type": "number"
+            },
+            {
+              "selector": "failed_rate",
+              "text": "Failed rate (%)",
+              "type": "number"
+            },
+            {
+              "selector": "reversed_rate",
+              "text": "Reversed rate (%)",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 18,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "How Much Traffic These Rates Represent",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 19
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "cloudwalk-monitoring-api"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "cloudwalk-monitoring-api"
+          },
+          "source": "url",
+          "url_options": {
+            "method": "GET"
+          },
+          "type": "json",
+          "format": "timeseries",
+          "parser": "backend",
+          "url": "http://api:8000/metrics/focus?bucket=hour",
+          "root_selector": "rows",
+          "columns": [
+            {
+              "selector": "timestamp",
+              "text": "Time",
+              "type": "timestamp"
+            },
+            {
+              "selector": "total",
+              "text": "Transactions in this time bucket",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "light-green"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "barAlignment": 0,
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Why Each Metric Is Ranked This Way",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 35
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "cloudwalk-monitoring-api"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "cloudwalk-monitoring-api"
+          },
+          "source": "url",
+          "url_options": {
+            "method": "GET"
+          },
+          "type": "json",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://api:8000/decision/focus",
+          "root_selector": "priority_items",
+          "columns": [
+            {
+              "selector": "metric",
+              "text": "Metric under review",
+              "type": "string"
+            },
+            {
+              "selector": "decision_status",
+              "text": "Action level now",
+              "type": "string"
+            },
+            {
+              "selector": "current_severity",
+              "text": "Formal alert severity now",
+              "type": "string"
+            },
+            {
+              "selector": "risk_score",
+              "text": "Priority score (0-100)",
+              "type": "number"
+            },
+            {
+              "selector": "confidence",
+              "text": "Confidence in this ranking (%)",
+              "type": "number"
+            },
+            {
+              "selector": "current_rate",
+              "text": "Current rate now (%)",
+              "type": "number"
+            },
+            {
+              "selector": "baseline_rate",
+              "text": "Typical baseline rate (%)",
+              "type": "number"
+            },
+            {
+              "selector": "forecast_rate",
+              "text": "Forecast rate within horizon (%)",
+              "type": "number"
+            },
+            {
+              "selector": "above_normal_rate",
+              "text": "Above baseline now (percentage points)",
+              "type": "number"
+            },
+            {
+              "selector": "forecast_above_normal_rate",
+              "text": "Above baseline within forecast horizon (percentage points)",
+              "type": "number"
+            },
+            {
+              "selector": "warning_gap_rate",
+              "text": "Gap before formal warning (percentage points remaining)",
+              "type": "number"
+            },
+            {
+              "selector": "excess_transactions_now",
+              "text": "Extra affected transactions now (approx.)",
+              "type": "number"
+            },
+            {
+              "selector": "projected_excess_transactions_horizon",
+              "text": "Extra affected transactions within forecast horizon (approx.)",
+              "type": "number"
+            },
+            {
+              "selector": "domain_label",
+              "text": "Business area affected",
+              "type": "string"
+            },
+            {
+              "selector": "likely_owner",
+              "text": "Team likely to act",
+              "type": "string"
+            },
+            {
+              "selector": "top_auth_codes_display",
+              "text": "Top authorization-code clues",
+              "type": "string"
+            },
+            {
+              "selector": "recommended_action",
+              "text": "Recommended next step",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Confidence in this ranking (%)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Current rate now (%)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Typical baseline rate (%)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Forecast rate within horizon (%)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Above baseline now (percentage points)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Above baseline within forecast horizon (percentage points)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Gap before formal warning (percentage points remaining)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "type": "text",
+      "title": "How To Read This Dashboard On First Login",
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 45
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### First login notes\\n- Grafana defaults: `admin` / `admin` (local demo).\\n- Monitoring API key is required for `/metrics`, `/alerts`, and `/decision`.\\n- Reviewer bootstrap prefers `external` mode for richer narrative explanations.\\n- Local mode remains deterministic and fully functional for monitoring behavior.\\n- `watch` is predictive guidance, while formal alerts come from `/monitor` threshold breaches."
+      }
+    }
+  ],
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  }
+}

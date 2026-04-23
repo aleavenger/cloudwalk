@@ -3,6 +3,11 @@ __pycache__/
 .pytest_cache/
 *.pyc
 logs/alerts.log
+logs/team_notifications.jsonl
+logs/playwright/
+logs/*.png
 .venv39/
 .env
 .env.reviewer
+node_modules/
+**/node_modules/

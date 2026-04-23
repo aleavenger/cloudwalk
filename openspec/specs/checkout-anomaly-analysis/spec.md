@@ -16,7 +16,7 @@ The submission SHALL provide a SQL-based analysis for `checkout_1.csv` and `chec
 - **THEN** the SQL output SHALL still include that hour so the reporting layer can distinguish meaningful spikes from low-volume noise
 
 ### Requirement: Checkout anomalies SHALL be explained with visual and written conclusions
-The submission SHALL include charts and narrative conclusions that compare `today` against historical references for both checkout datasets and identify the most relevant anomalous windows.
+The submission SHALL include charts and narrative conclusions that compare `today` against historical references for both checkout datasets and identify the most relevant anomalous windows in reviewer-facing language without removing the timestamp evidence required by the challenge brief.
 
 #### Scenario: Each checkout dataset has its own chart
 - **WHEN** the repository deliverables are reviewed
@@ -33,3 +33,8 @@ The submission SHALL include charts and narrative conclusions that compare `toda
 #### Scenario: Checkout_1 elevated period is explicitly reported
 - **WHEN** the report summarizes checkout_1 behavior
 - **THEN** it SHALL include at least one elevated window from `10h`, `12h`, `15h`, or `17h` with baseline comparison context
+
+#### Scenario: Report wording remains challenge-readable after copy rewrite
+- **WHEN** the checkout-analysis section is rewritten for clearer reviewer-facing language
+- **THEN** it SHALL still explain the anomaly behavior in plain language
+- **AND** it SHALL preserve the explicit checkout hour markers and baseline-comparison evidence needed to satisfy `database/monitoring-test.md`

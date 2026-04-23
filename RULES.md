@@ -76,7 +76,25 @@ Before changes to API auth, alert logic thresholds, Docker startup flow, or moni
 - Prefer repository virtualenv execution when available:
   - `.venv/bin/python -m pytest`
 
-## 9. AI-Specific Adapters
+## 9. Delegation and Model Selection
+
+- For coding work, use subagents whenever the task contains any bounded separable subtask that can run in parallel without lowering quality.
+- Do not skip subagents for convenience on multi-part coding work; keep work local only when the task is truly tiny or fully serial.
+- Prefer cheaper models when they can complete the task without reducing result quality.
+- Prefer `codex` models for code implementation, code editing, and code debugging.
+- Prefer `gpt` models for planning, review, synthesis, and other reasoning-heavy work.
+- For read-only scavenging tasks such as web lookup, repo scraping, log inspection, or database inspection, use the cheapest capable model and avoid high-end models when no deeper reasoning is required.
+- Default coding ladder:
+  - `gpt-5.1-codex-mini` for bounded low-risk code tasks
+  - `gpt-5.2-codex` for standard coding work
+  - `gpt-5.3-codex` or stronger only for materially complex or high-risk code tasks
+- Default reasoning ladder:
+  - `gpt-5.2` for standard planning, review, and analysis
+  - `gpt-5.4` only when the reasoning difficulty clearly justifies escalation
+- If a preferred model is unavailable, use the next available model that preserves the same lane and cost discipline before crossing to a more expensive or different-family model.
+- Higher-priority host/tool constraints still apply; repository policy does not override platform-enforced limits on delegation or model availability.
+
+## 10. AI-Specific Adapters
 
 AI-specific files may add workflow details but must not contradict this file:
 - AGENTS.md

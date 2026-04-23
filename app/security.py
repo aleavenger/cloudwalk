@@ -13,7 +13,7 @@ class MonitorPayloadLimitMiddleware(BaseHTTPMiddleware):
         self.max_bytes = max_bytes
 
     async def dispatch(self, request: Request, call_next):
-        if request.url.path == "/monitor":
+        if request.url.path == "/monitor" or request.url.path == "/monitor/transaction":
             content_length = request.headers.get("content-length")
             if content_length:
                 try:

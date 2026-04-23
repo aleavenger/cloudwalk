@@ -14,6 +14,8 @@ MetricName = Literal["denied", "failed", "reversed"]
 DecisionOverallStatus = Literal["normal", "watch", "act_now"]
 DecisionEngineMode = Literal["local", "external"]
 ExternalAIProvider = Literal["openai", "anthropic", "google"]
+TransactionStatus = Literal["approved", "denied", "failed", "reversed", "backend_reversed", "refunded"]
+TeamNotificationStatus = Literal["disabled", "sent", "failed"]
 
 
 class MonitorRequest(BaseModel):
@@ -41,6 +43,21 @@ class MonitorRequest(BaseModel):
         return value
 
 
+class TransactionEventRequest(BaseModel):
+    timestamp: datetime
+    status: TransactionStatus
+    auth_code: str | None = None
+
+    @field_validator("auth_code")
+    @classmethod
+    def validate_auth_code(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if len(value) > 16:
+            raise ValueError("auth_code key length cannot exceed 16")
+        return value
+
+
 class Rates(BaseModel):
     denied_rate: float
     failed_rate: float
@@ -55,6 +72,8 @@ class MonitorResponse(BaseModel):
     rates: Rates
     baseline_rates: Rates
     notification_sent: bool
+    team_notification_status: TeamNotificationStatus = "disabled"
+    notification_channels: list[str] = Field(default_factory=list)
     reason: str
 
 
@@ -79,6 +98,8 @@ class AlertRecord(BaseModel):
     rates: Rates
     baseline_rates: Rates
     notification_status: Literal["sent", "suppressed", "skipped"]
+    team_notification_status: TeamNotificationStatus = "disabled"
+    notification_channels: list[str] = Field(default_factory=list)
     reason: str
     auth_code_top: list[tuple[str, int]] = Field(default_factory=list)
     auth_code_top_display: str = ""
@@ -104,6 +125,13 @@ class DecisionPriorityItem(BaseModel):
     current_rate: float = Field(ge=0.0, le=1.0)
     baseline_rate: float = Field(ge=0.0, le=1.0)
     forecast_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    above_normal_rate: float = Field(ge=0.0, le=1.0)
+    forecast_above_normal_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    excess_transactions_now: int = Field(ge=0)
+    projected_excess_transactions_horizon: int | None = Field(default=None, ge=0)
+    warning_gap_rate: float = Field(ge=0.0, le=1.0)
+    domain_label: str
+    likely_owner: str
     recommended_action: str
     root_cause_hint: str
     top_auth_codes: list[tuple[str, int]] = Field(default_factory=list)
@@ -120,6 +148,20 @@ class DecisionForecastPoint(BaseModel):
     timestamp: datetime
     metric: MetricName
     forecast_rate: float = Field(ge=0.0, le=1.0)
+
+
+class ForecastChartPoint(BaseModel):
+    anchor_timestamp: datetime
+    minutes_ahead: int = Field(ge=0)
+    horizon_label: str
+    denied_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    failed_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    reversed_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    max_rate: float = Field(ge=0.0, le=1.0)
+
+
+class ForecastChartResponse(BaseModel):
+    points: list[ForecastChartPoint]
 
 
 class DecisionEvidence(BaseModel):
@@ -144,11 +186,24 @@ class DecisionProviderStatus(BaseModel):
     last_error: str | None = None
 
 
+class DecisionBusinessImpact(BaseModel):
+    top_metric: MetricName
+    domain_label: str
+    likely_owner: str
+    above_normal_rate: float = Field(ge=0.0, le=1.0)
+    warning_gap_rate: float = Field(ge=0.0, le=1.0)
+    excess_transactions_now: int = Field(ge=0)
+    projected_excess_transactions_horizon: int | None = Field(default=None, ge=0)
+
+
 class DecisionResponse(BaseModel):
     generated_at: datetime
     overall_status: DecisionOverallStatus
     top_recommendation: str
     summary: str
+    problem_explanation: str
+    forecast_explanation: str
+    business_impact: DecisionBusinessImpact | None = None
     priority_items: list[DecisionPriorityItem]
     forecast_points: list[DecisionForecastPoint]
     recent_evidence: list[DecisionEvidence]

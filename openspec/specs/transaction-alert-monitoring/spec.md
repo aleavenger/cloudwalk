@@ -5,23 +5,33 @@ Define the required transaction-monitoring API behavior, anomaly logic, and aler
 ### Requirement: Monitoring endpoint SHALL return anomaly recommendations for transaction windows
 The system SHALL expose an HTTP endpoint that accepts a transaction summary window and returns enough information for an operator or downstream system to decide whether the window warrants an alert.
 
-#### Scenario: Endpoint contract fields are enforced
+The system SHALL also expose an additive transaction-event endpoint that accepts a single transaction event, folds it into the corresponding minute bucket, and evaluates that bucket through the same anomaly engine and alert workflow.
+
+#### Scenario: Aggregate endpoint contract fields are enforced
 - **WHEN** a client sends `POST /monitor`
 - **THEN** the request SHALL require `window_end` plus integer fields `approved`, `denied`, `failed`, `reversed`, `backend_reversed`, and `refunded`, and SHALL allow optional `auth_code_counts`
 
+#### Scenario: Transaction-event endpoint contract fields are enforced
+- **WHEN** a client sends `POST /monitor/transaction`
+- **THEN** the request SHALL require `timestamp` and `status`, SHALL allow optional `auth_code`, and SHALL reject unsupported status values with a client error
+
+#### Scenario: Transaction events accumulate into minute windows
+- **WHEN** the transaction-event endpoint receives multiple events in the same minute
+- **THEN** the system SHALL aggregate them into the same minute bucket before evaluating anomaly logic and returning the resulting recommendation for that bucket
+
 #### Scenario: Normal window returns no alert
-- **WHEN** the monitoring endpoint receives a transaction window whose denied, failed, and reversed behavior remains within configured normal bounds
+- **WHEN** either monitoring endpoint evaluates a transaction window whose denied, failed, and reversed behavior remains within configured normal bounds
 - **THEN** the response SHALL mark the recommendation as `no_alert` and include the computed rates used for that decision
 
 #### Scenario: Abnormal window returns an alert recommendation
-- **WHEN** the monitoring endpoint receives a transaction window whose denied, failed, or reversed behavior exceeds the configured anomaly criteria
+- **WHEN** either monitoring endpoint evaluates a transaction window whose denied, failed, or reversed behavior exceeds the configured anomaly criteria
 - **THEN** the response SHALL mark the recommendation as `alert`, include `triggered_metrics`, include `severity`, and include both `rates` and `baseline_rates`
 
 #### Scenario: Invalid payload is rejected
-- **WHEN** the monitoring endpoint receives missing required fields or non-integer count values
+- **WHEN** a monitoring endpoint receives missing required fields or invalid field types
 - **THEN** the endpoint SHALL return HTTP `422`
 
-#### Scenario: Oversized or unbounded payload is rejected
+#### Scenario: Oversized or unbounded aggregate payload is rejected
 - **WHEN** `POST /monitor` exceeds the configured body-size or field-size safety limits
 - **THEN** the endpoint SHALL reject the request with a client error status and SHALL NOT process alert logic for that payload
 
@@ -66,11 +76,17 @@ The system SHALL expose health, metrics, decision-guidance, and alert-history en
 
 #### Scenario: Alert history reflects generated notifications
 - **WHEN** an anomaly recommendation results in an alert event
-- **THEN** the alert-history endpoint SHALL return a root `alerts` array containing the event timestamp, severity, triggering metrics, rates, baseline rates, and notification outcome
+- **THEN** the alert-history endpoint SHALL return a root `alerts` array containing the event timestamp, severity, triggering metrics, rates, baseline rates, the legacy notification outcome field, team notification status, and the channels used for reporting
 
-#### Scenario: Decision endpoint exposes operator guidance
+#### Scenario: Decision endpoint exposes operator guidance and business impact
 - **WHEN** a client requests decision guidance
-- **THEN** the response SHALL return a current decision snapshot that includes `overall_status`, `top_recommendation`, `summary`, `priority_items`, `forecast_points`, `recent_evidence`, and provider state
+- **THEN** the response SHALL return a current decision snapshot that includes `overall_status`, `top_recommendation`, `summary`, `problem_explanation`, `forecast_explanation`, `business_impact`, `priority_items`, `forecast_points`, `recent_evidence`, and provider state
+- **AND** `business_impact` SHALL include `top_metric`, `domain_label`, `likely_owner`, `above_normal_rate`, `warning_gap_rate`, `excess_transactions_now`, and `projected_excess_transactions_horizon`
+- **AND** each priority item SHALL include `above_normal_rate`, `forecast_above_normal_rate`, `excess_transactions_now`, `projected_excess_transactions_horizon`, and `warning_gap_rate`
+
+#### Scenario: Decision endpoint keeps raw numeric fields machine-readable
+- **WHEN** a client consumes decision guidance programmatically
+- **THEN** the response SHALL continue exposing raw numeric rate, confidence, and business-impact fields rather than replacing them with human-formatted strings
 
 #### Scenario: Health endpoint is available
 - **WHEN** a client requests `GET /health`
@@ -80,12 +96,12 @@ The system SHALL expose health, metrics, decision-guidance, and alert-history en
 The system SHALL support API-key protection for operational endpoints so monitoring and alert data are not exposed unintentionally.
 
 #### Scenario: Protected endpoint rejects missing key
-- **WHEN** `MONITORING_API_KEY` is configured and a client calls `POST /monitor`, `GET /metrics`, `GET /alerts`, or `GET /decision` without `X-API-Key`
+- **WHEN** `MONITORING_API_KEY` is configured and a client calls `POST /monitor`, `POST /monitor/transaction`, `GET /metrics`, `GET /alerts`, or `GET /decision` without `X-API-Key`
 - **THEN** the endpoint SHALL return HTTP `401`
 
 #### Scenario: Protected endpoint accepts valid key
 - **WHEN** `MONITORING_API_KEY` is configured and the request includes a matching `X-API-Key`
-- **THEN** the endpoint SHALL process the request normally
+- **THEN** the protected endpoint SHALL process the request normally
 
 #### Scenario: Local health checks remain available
 - **WHEN** a client calls `GET /health` without an API key
@@ -101,6 +117,29 @@ The system SHALL log only the minimum aggregated fields needed for alert traceab
 #### Scenario: Log output excludes secrets and raw payloads
 - **WHEN** an alert event is written by the default notifier logger
 - **THEN** the log entry SHALL exclude API keys, environment variables, and raw request payload bodies
+
+#### Scenario: Team notification payload excludes secrets and raw payloads
+- **WHEN** a formal alert is delivered through the team-notification sink
+- **THEN** the outbound payload SHALL include only aggregated alert metadata and SHALL exclude API keys, raw request bodies, and other secret-bearing configuration values
+
+### Requirement: Formal alerts SHALL deliver to a team-facing notification sink
+The system SHALL report formal alert events automatically through a team-facing webhook sink while retaining local aggregated log output for reviewer traceability.
+
+#### Scenario: Formal alert sends webhook notification when configured
+- **WHEN** a formal alert is generated and a team webhook URL is configured
+- **THEN** the system SHALL attempt webhook delivery and record the team notification outcome in alert history
+
+#### Scenario: Demo runtime includes a local team notification receiver
+- **WHEN** the reviewer one-click stack starts with its default local configuration
+- **THEN** the monitoring service SHALL target a local mock team receiver so end-to-end notification delivery can be demonstrated without external services
+
+#### Scenario: Webhook delivery failure does not drop alert history
+- **WHEN** webhook delivery fails or times out
+- **THEN** the system SHALL still retain the formal alert record, mark team notification as failed, and continue serving monitoring APIs without crashing
+
+#### Scenario: Disabled webhook is represented honestly
+- **WHEN** team webhook delivery is not configured outside the demo runtime
+- **THEN** the system SHALL keep local alert traceability and mark the team notification status as disabled rather than claiming delivery succeeded
 
 ### Requirement: Formal alerts SHALL remain distinct from predictive watch guidance
 The system SHALL preserve existing formal alert semantics for `/monitor` and alert history while allowing the decision layer to surface predictive risk and watch states that do not emit notifier events.
@@ -127,4 +166,3 @@ The system SHALL handle payload-size and provider-status edge cases without leak
 #### Scenario: Provider status is sanitized
 - **WHEN** the decision endpoint reports external-provider fallback
 - **THEN** the surfaced provider status SHALL omit API keys, raw provider responses, and unsanitized exception text
-
