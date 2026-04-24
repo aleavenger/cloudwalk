@@ -16,6 +16,7 @@ Date: 2026-04-23
 - `database/` - source CSV datasets and generated report CSV files.
 - `scripts/` - anomaly report generation, chart generation, smoke checks.
 - `scripts/reviewer_start.sh` - one-step reviewer bootstrap (env prep, compose up, smoke checks, first-login output).
+- `scripts/reviewer_start.ps1` - Windows PowerShell launcher that runs the same bootstrap through Git Bash.
 - `charts/` - generated SVG visualizations.
 - `grafana/` - dashboard JSON and provisioning config.
 - `docker/` - API and Grafana image definitions and startup entrypoint.
@@ -26,6 +27,7 @@ Date: 2026-04-23
 - App bootstrap: `app/main.py` (`create_app`).
 - Container bootstrap: `docker/api-entrypoint.sh`.
 - Reviewer bootstrap: `scripts/reviewer_start.sh`.
+- Windows reviewer bootstrap launcher: `scripts/reviewer_start.ps1`.
 - Runtime server: `uvicorn app.main:app`.
 
 ## Architecture Pattern

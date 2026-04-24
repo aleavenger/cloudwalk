@@ -17,6 +17,8 @@ This submission was built with AI assistance, but under explicit engineering con
 ## One-Step Reviewer Bootstrap (Primary)
 
 Prerequisites:
+- Bash shell (`bash`) to run `./scripts/reviewer_start.sh`
+- On Windows, use PowerShell + Git Bash and run `.\scripts\reviewer_start.ps1`
 - Docker Engine
 - Docker Compose (v2, `docker compose`)
 - `curl`
@@ -27,6 +29,12 @@ Single command startup:
 
 ```bash
 ./scripts/reviewer_start.sh
+```
+
+Windows (PowerShell):
+
+```powershell
+.\scripts\reviewer_start.ps1
 ```
 
 Services:

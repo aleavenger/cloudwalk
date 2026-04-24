@@ -4,7 +4,7 @@
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 7,
-  "refresh": "auto",
+  "refresh": "30m",
   "time": {
     "from": "2025-07-12T13:45:00Z",
     "to": "2025-07-15T14:14:00Z"
