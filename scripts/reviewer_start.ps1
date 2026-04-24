@@ -16,7 +16,7 @@ $bashCandidates = @(
 $bashPath = $bashCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 
 if (-not $bashPath) {
-  throw "Git Bash was not found. Install Git for Windows or configure Bash Runner to a valid bash.exe path."
+  throw "Git Bash was not found. Install Git for Windows or run scripts/reviewer_start.sh from another Bash environment."
 }
 
 Write-Host "Running reviewer bootstrap with: $bashPath"
@@ -24,6 +24,7 @@ Push-Location $rootDir
 try {
   & $bashPath $scriptPath
   exit $LASTEXITCODE
-} finally {
+}
+finally {
   Pop-Location
 }
