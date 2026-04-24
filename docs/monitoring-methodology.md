@@ -123,6 +123,13 @@ Why both paths exist:
 - keeping both paths makes the separation between replay validation and streaming-style ingestion explicit for reviewers
 - both routes converge on the same rate computation, baseline comparison, and cooldown rules, so there is no hidden divergence in alert semantics
 
+Request-body safety for ingestion:
+
+- `MAX_MONITOR_REQUEST_BYTES` sets the hard body limit for `/monitor` and `/monitor/transaction` (default `65536` bytes).
+- body size is enforced at ASGI receive level while request chunks are consumed.
+- oversized monitor payloads are rejected early with `413 Payload Too Large`.
+- malformed `Content-Length` is rejected with `422 Unprocessable Content`.
+
 ### Decision Guidance Logic (`GET /decision`)
 
 The decision layer is built from current runtime state and does not alter formal alert generation.
@@ -160,14 +167,14 @@ Default parameters (unless overridden by env):
 - lookback window: 15 minutes
 - horizon: 30 minutes
 - step: 5 minutes
-- minimum history points: 1 (demo default; recommended production value is 5)
+- minimum history points: 5 (default)
 
 Computation:
 - weighted moving average over retained points with weights `1..N`
 - slope from arithmetic mean of consecutive per-minute deltas
 - bounded forecast rates to valid range `0.0..1.0`
 - when history is insufficient, forecast output is omitted and confidence remains lower
-- when minimum history points is set to 1, forecast text includes a warning that this is test/demo-only and recommends 5
+- when minimum history points is set to 1 (optional test/demo override), forecast text includes a warning that recommends 5
 
 ### Dashboard Recent-Focus Window
 
@@ -178,7 +185,7 @@ Computation:
 - Grafana renders `dashboard.json` from `dashboard.template.json` using the selected cluster start and an end time extended through the forecast horizon.
 - The provisioned dashboard refresh is fixed at `30m` so repeated external narrative calls are explicit and bounded for reviewer demos.
 - When `external` mode is enabled, page loads and refresh cycles can trigger repeated AI-backed narrative requests because multiple panels query `/decision/focus`.
-- The `What Could Get Worse In The Forecast Window` panel intentionally does not use the dashboard-wide absolute time axis; it renders the same focused forecast against adaptive relative horizon labels such as `+5m`, `+10m`, and `+15m`.
+- The `Forecast from Latest Minute (+5m to +30m)` panel intentionally does not use the dashboard-wide absolute time axis; it renders the same focused forecast against adaptive relative horizon labels such as `+5m`, `+10m`, and `+15m`.
 - `GET /metrics/recent?days=N` remains available as a compatibility endpoint for latest-anchored slicing outside the dashboard flow.
 
 ### Optional External Narrative Mode

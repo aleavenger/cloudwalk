@@ -11,15 +11,15 @@ async function run() {
   const outputDir = process.env.PLAYWRIGHT_OUTPUT_DIR || "logs/playwright";
   const screenshotPath = path.join(outputDir, "grafana-dashboard-playwright-check.png");
   const requiredTitles = [
-    "Reviewer Brief: What Needs Attention Right Now",
-    "Why Each Metric Is Ranked This Way",
-    "What Could Get Worse In The Forecast Window",
-    "Evidence Behind The Current Recommendation",
-    "What This Top Issue Means For The Business",
-    "Formal Alerts That Have Already Fired",
-    "How Risk Rates Are Moving Over Time",
-    "How Much Traffic These Rates Represent",
-    "How To Read This Dashboard On First Login",
+    "How to Read This Page",
+    "Current Decision at Latest Minute",
+    "Business Impact of Current Top Metric",
+    "Forecast from Latest Minute (+5m to +30m)",
+    "Evidence for Current Decision",
+    "Historical Hourly Risk Rates (Focus Window)",
+    "Historical Hourly Volume (Focus Window)",
+    "Metric Ranking Behind Current Decision",
+    "Runtime Formal Alert Log (This Session)",
   ];
 
   fs.mkdirSync(outputDir, { recursive: true });

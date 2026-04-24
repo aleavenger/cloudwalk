@@ -22,3 +22,5 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+addopts = "-p no:tmpdir -p no:cacheprovider"
+cache_dir = "logs/.pytest_cache"

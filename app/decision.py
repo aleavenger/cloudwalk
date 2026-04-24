@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import json
 from urllib.parse import urlparse
 from statistics import mean
@@ -50,7 +50,7 @@ class DecisionEngine:
         if not metrics_rows:
             provider_status = DecisionProviderStatus(mode=self.settings.decision_engine_mode, fallback_active=False)
             return DecisionResponse(
-                generated_at=datetime.utcnow(),
+                generated_at=datetime.now(UTC).replace(tzinfo=None),
                 overall_status="normal",
                 top_recommendation="No monitoring data is available yet.",
                 summary="The decision engine has no metrics rows to analyze.",
@@ -159,7 +159,7 @@ class DecisionEngine:
         forecast_explanation = self._append_forecast_history_warning(forecast_explanation)
 
         return DecisionResponse(
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(UTC).replace(tzinfo=None),
             overall_status=overall_status,
             top_recommendation=top_recommendation,
             summary=summary,

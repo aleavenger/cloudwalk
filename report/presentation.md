@@ -254,7 +254,7 @@ The implementation protects the reviewer runtime with:
 
 - localhost-only Docker port bindings
 - optional API key on monitoring endpoints, metrics endpoints (`/metrics`, `/metrics/recent`, `/metrics/focus`), alerts, and decision endpoints (`/decision`, `/decision/focus`, `/decision/forecast/focus`)
-- request body size limits
+- streaming request-body size limits on monitor endpoints with early `413 Payload Too Large` rejection for oversized payloads
 - count and auth-code validation
 - aggregate-only alert metadata
 - webhook delivery status reported separately from alert detection

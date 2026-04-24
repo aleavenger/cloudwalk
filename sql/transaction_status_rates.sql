@@ -1,4 +1,8 @@
-WITH per_minute AS (
+WITH transactions AS (
+    SELECT *
+    FROM read_csv_auto('database/transactions.csv')
+),
+per_minute AS (
     SELECT
         timestamp,
         SUM(CASE WHEN status = 'approved' THEN count ELSE 0 END) AS approved,

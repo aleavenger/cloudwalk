@@ -45,15 +45,15 @@ def main() -> None:
     assert dashboard.get("time") == {"from": "2025-07-12T13:45:00Z", "to": "2025-07-15T14:14:00Z"}
 
     panel_titles = {panel.get("title") for panel in dashboard.get("panels", [])}
-    assert "Reviewer Brief: What Needs Attention Right Now" in panel_titles
-    assert "Why Each Metric Is Ranked This Way" in panel_titles
-    assert "What Could Get Worse In The Forecast Window" in panel_titles
-    assert "Evidence Behind The Current Recommendation" in panel_titles
-    assert "Formal Alerts That Have Already Fired" in panel_titles
-    assert "What This Top Issue Means For The Business" in panel_titles
-    assert "How Risk Rates Are Moving Over Time" in panel_titles
-    assert "How Much Traffic These Rates Represent" in panel_titles
-    assert "How To Read This Dashboard On First Login" in panel_titles
+    assert "Current Decision at Latest Minute" in panel_titles
+    assert "Metric Ranking Behind Current Decision" in panel_titles
+    assert "Forecast from Latest Minute (+5m to +30m)" in panel_titles
+    assert "Evidence for Current Decision" in panel_titles
+    assert "Runtime Formal Alert Log (This Session)" in panel_titles
+    assert "Business Impact of Current Top Metric" in panel_titles
+    assert "Historical Hourly Risk Rates (Focus Window)" in panel_titles
+    assert "Historical Hourly Volume (Focus Window)" in panel_titles
+    assert "How to Read This Page" in panel_titles
 
     panel1 = _target_by_panel_id(dashboard, 1)
     assert panel1.get("format") == "table"
@@ -73,28 +73,18 @@ def main() -> None:
     _assert_column(panel2.get("columns", []), "Metric under review", "string")
     _assert_column(panel2.get("columns", []), "Action level now", "string")
     _assert_column(panel2.get("columns", []), "Formal alert severity now", "string")
-    _assert_column(panel2.get("columns", []), "Priority score (0-100)", "number")
-    _assert_column(panel2.get("columns", []), "Confidence in this ranking (%)", "number")
     _assert_column(panel2.get("columns", []), "Current rate now (%)", "number")
     _assert_column(panel2.get("columns", []), "Typical baseline rate (%)", "number")
     _assert_column(panel2.get("columns", []), "Forecast rate within horizon (%)", "number")
-    _assert_column(panel2.get("columns", []), "Top authorization-code clues", "string")
-    _assert_column(panel2.get("columns", []), "Above baseline now (percentage points)", "number")
-    _assert_column(panel2.get("columns", []), "Above baseline within forecast horizon (percentage points)", "number")
-    _assert_column(panel2.get("columns", []), "Gap before formal warning (percentage points remaining)", "number")
-    _assert_column(panel2.get("columns", []), "Extra affected transactions now (approx.)", "number")
-    _assert_column(panel2.get("columns", []), "Extra affected transactions within forecast horizon (approx.)", "number")
-    _assert_column(panel2.get("columns", []), "Business area affected", "string")
+    _assert_column(panel2.get("columns", []), "Distance to formal warning threshold", "number")
     _assert_column(panel2.get("columns", []), "Team likely to act", "string")
     _assert_column(panel2.get("columns", []), "Recommended next step", "string")
+    _assert_column(panel2.get("columns", []), "Auth-code context at latest minute", "string")
     panel2_full = next(p for p in dashboard.get("panels", []) if p.get("id") == 2)
-    _assert_percent_override(panel2_full, "Confidence in this ranking (%)")
     _assert_percent_override(panel2_full, "Current rate now (%)")
     _assert_percent_override(panel2_full, "Typical baseline rate (%)")
     _assert_percent_override(panel2_full, "Forecast rate within horizon (%)")
-    _assert_percent_override(panel2_full, "Above baseline now (percentage points)")
-    _assert_percent_override(panel2_full, "Above baseline within forecast horizon (percentage points)")
-    _assert_percent_override(panel2_full, "Gap before formal warning (percentage points remaining)")
+    _assert_percent_override(panel2_full, "Distance to formal warning threshold")
 
     panel4 = _target_by_panel_id(dashboard, 4)
     assert panel4.get("format") == "table"
@@ -103,7 +93,7 @@ def main() -> None:
     _assert_column(panel4.get("columns", []), "Recorded at", "timestamp")
     _assert_column(panel4.get("columns", []), "Evidence source", "string")
     _assert_column(panel4.get("columns", []), "What this evidence says", "string")
-    _assert_column(panel4.get("columns", []), "Supporting authorization-code context", "string")
+    _assert_column(panel4.get("columns", []), "Auth-code context at latest minute", "string")
 
     panel3 = _target_by_panel_id(dashboard, 3)
     assert panel3.get("format") == "table"
@@ -150,20 +140,22 @@ def main() -> None:
     assert panel9.get("format") == "table"
     assert panel9.get("parser") == "backend"
     assert panel9.get("url") == "http://api:8000/decision/focus"
-    _assert_column(panel9.get("columns", []), "Top metric driving the issue", "string")
-    _assert_column(panel9.get("columns", []), "Business area affected", "string")
-    _assert_column(panel9.get("columns", []), "Team likely to act", "string")
-    _assert_column(panel9.get("columns", []), "Above baseline now (percentage points)", "number")
-    _assert_column(panel9.get("columns", []), "Gap before formal warning (percentage points remaining)", "number")
-    _assert_column(panel9.get("columns", []), "Extra affected transactions now (approx.)", "number")
-    _assert_column(panel9.get("columns", []), "Extra affected transactions within forecast horizon (approx.)", "number")
+    _assert_column(panel9.get("columns", []), "Metric", "string")
+    _assert_column(panel9.get("columns", []), "Business area", "string")
+    _assert_column(panel9.get("columns", []), "Team", "string")
+    _assert_column(panel9.get("columns", []), "Gap vs normal", "number")
+    _assert_column(panel9.get("columns", []), "Gap to warning", "number")
+    _assert_column(panel9.get("columns", []), "Excess now", "number")
+    _assert_column(panel9.get("columns", []), "Excess in 30m", "number")
     panel9_full = next(p for p in dashboard.get("panels", []) if p.get("id") == 9)
-    _assert_percent_override(panel9_full, "Above baseline now (percentage points)")
-    _assert_percent_override(panel9_full, "Gap before formal warning (percentage points remaining)")
+    _assert_percent_override(panel9_full, "Gap vs normal")
+    _assert_percent_override(panel9_full, "Gap to warning")
 
     panel8_full = next(p for p in dashboard.get("panels", []) if p.get("id") == 8)
     panel8_content = panel8_full.get("options", {}).get("content", "")
     assert "Dashboard refresh is fixed at `30m`." in panel8_content
+    assert "`Current decision` panels use the latest minute in the focus window." in panel8_content
+    assert "`Runtime alert log` shows only alerts generated in this session" in panel8_content
     assert "`external` mode is optional narrative polish;" in panel8_content
     assert "page loads and each refresh cycle can trigger repeated AI-backed narrative requests" in panel8_content
 

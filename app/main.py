@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -61,7 +61,10 @@ def _upsert_metrics_row(rows: list[MetricsRow], row: MetricsRow) -> list[Metrics
 
 
 def _normalize_timestamp(timestamp: datetime) -> datetime:
-    return timestamp.replace(tzinfo=None) if timestamp.tzinfo else timestamp
+    if timestamp.tzinfo is None:
+        return timestamp
+    # Convert aware timestamps to a single UTC-naive bucket space.
+    return timestamp.astimezone(UTC).replace(tzinfo=None)
 
 
 def _normalize_minute_bucket(timestamp: datetime) -> datetime:

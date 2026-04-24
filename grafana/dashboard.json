@@ -13,12 +13,12 @@
     {
       "id": 1,
       "type": "table",
-      "title": "Reviewer Brief: What Needs Attention Right Now",
+      "title": "Current Decision at Latest Minute",
       "gridPos": {
-        "h": 6,
+        "h": 5,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 6
       },
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
@@ -81,12 +81,12 @@
     {
       "id": 9,
       "type": "table",
-      "title": "What This Top Issue Means For The Business",
+      "title": "Business Impact of Current Top Metric",
       "gridPos": {
-        "h": 5,
-        "w": 24,
+        "h": 7,
+        "w": 14,
         "x": 0,
-        "y": 6
+        "y": 11
       },
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
@@ -110,37 +110,37 @@
           "columns": [
             {
               "selector": "business_impact.top_metric",
-              "text": "Top metric driving the issue",
+              "text": "Metric",
               "type": "string"
             },
             {
               "selector": "business_impact.domain_label",
-              "text": "Business area affected",
+              "text": "Business area",
               "type": "string"
             },
             {
               "selector": "business_impact.likely_owner",
-              "text": "Team likely to act",
+              "text": "Team",
               "type": "string"
             },
             {
               "selector": "business_impact.above_normal_rate",
-              "text": "Above baseline now (percentage points)",
+              "text": "Gap vs normal",
               "type": "number"
             },
             {
               "selector": "business_impact.warning_gap_rate",
-              "text": "Gap before formal warning (percentage points remaining)",
+              "text": "Gap to warning",
               "type": "number"
             },
             {
               "selector": "business_impact.excess_transactions_now",
-              "text": "Extra affected transactions now (approx.)",
+              "text": "Excess now",
               "type": "number"
             },
             {
               "selector": "business_impact.projected_excess_transactions_horizon",
-              "text": "Extra affected transactions within forecast horizon (approx.)",
+              "text": "Excess in 30m",
               "type": "number"
             }
           ]
@@ -152,7 +152,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Above baseline now (percentage points)"
+              "options": "Gap vs normal"
             },
             "properties": [
               {
@@ -164,7 +164,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Gap before formal warning (percentage points remaining)"
+              "options": "Gap to warning"
             },
             "properties": [
               {
@@ -179,11 +179,11 @@
     {
       "id": 3,
       "type": "barchart",
-      "title": "What Could Get Worse In The Forecast Window",
+      "title": "Forecast from Latest Minute (+5m to +30m)",
       "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
+        "h": 7,
+        "w": 10,
+        "x": 14,
         "y": 11
       },
       "datasource": {
@@ -284,12 +284,12 @@
     {
       "id": 4,
       "type": "table",
-      "title": "Evidence Behind The Current Recommendation",
+      "title": "Evidence for Current Decision",
       "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 11
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 18
       },
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
@@ -329,7 +329,7 @@
             },
             {
               "selector": "auth_code_top_display",
-              "text": "Supporting authorization-code context",
+              "text": "Auth-code context at latest minute",
               "type": "string"
             }
           ]
@@ -343,12 +343,12 @@
     {
       "id": 5,
       "type": "table",
-      "title": "Formal Alerts That Have Already Fired",
+      "title": "Runtime Formal Alert Log (This Session)",
       "gridPos": {
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 27
+        "y": 42
       },
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
@@ -402,12 +402,12 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "How Risk Rates Are Moving Over Time",
+      "title": "Historical Hourly Risk Rates (Focus Window)",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 19
+        "y": 25
       },
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
@@ -483,12 +483,12 @@
     {
       "id": 7,
       "type": "timeseries",
-      "title": "How Much Traffic These Rates Represent",
+      "title": "Historical Hourly Volume (Focus Window)",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 19
+        "y": 25
       },
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
@@ -557,12 +557,12 @@
     {
       "id": 2,
       "type": "table",
-      "title": "Why Each Metric Is Ranked This Way",
+      "title": "Metric Ranking Behind Current Decision",
       "gridPos": {
-        "h": 10,
+        "h": 9,
         "w": 24,
         "x": 0,
-        "y": 35
+        "y": 33
       },
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
@@ -601,16 +601,6 @@
               "type": "string"
             },
             {
-              "selector": "risk_score",
-              "text": "Priority score (0-100)",
-              "type": "number"
-            },
-            {
-              "selector": "confidence",
-              "text": "Confidence in this ranking (%)",
-              "type": "number"
-            },
-            {
               "selector": "current_rate",
               "text": "Current rate now (%)",
               "type": "number"
@@ -626,34 +616,9 @@
               "type": "number"
             },
             {
-              "selector": "above_normal_rate",
-              "text": "Above baseline now (percentage points)",
-              "type": "number"
-            },
-            {
-              "selector": "forecast_above_normal_rate",
-              "text": "Above baseline within forecast horizon (percentage points)",
-              "type": "number"
-            },
-            {
               "selector": "warning_gap_rate",
-              "text": "Gap before formal warning (percentage points remaining)",
+              "text": "Distance to formal warning threshold",
               "type": "number"
-            },
-            {
-              "selector": "excess_transactions_now",
-              "text": "Extra affected transactions now (approx.)",
-              "type": "number"
-            },
-            {
-              "selector": "projected_excess_transactions_horizon",
-              "text": "Extra affected transactions within forecast horizon (approx.)",
-              "type": "number"
-            },
-            {
-              "selector": "domain_label",
-              "text": "Business area affected",
-              "type": "string"
             },
             {
               "selector": "likely_owner",
@@ -662,7 +627,7 @@
             },
             {
               "selector": "top_auth_codes_display",
-              "text": "Top authorization-code clues",
+              "text": "Auth-code context at latest minute",
               "type": "string"
             },
             {
@@ -676,18 +641,6 @@
       "fieldConfig": {
         "defaults": {},
         "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Confidence in this ranking (%)"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percentunit"
-              }
-            ]
-          },
           {
             "matcher": {
               "id": "byName",
@@ -727,31 +680,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Above baseline now (percentage points)"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percentunit"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Above baseline within forecast horizon (percentage points)"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percentunit"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Gap before formal warning (percentage points remaining)"
+              "options": "Distance to formal warning threshold"
             },
             "properties": [
               {
@@ -766,16 +695,16 @@
     {
       "id": 8,
       "type": "text",
-      "title": "How To Read This Dashboard On First Login",
+      "title": "How to Read This Page",
       "gridPos": {
-        "h": 7,
+        "h": 6,
         "w": 24,
         "x": 0,
-        "y": 45
+        "y": 0
       },
       "options": {
         "mode": "markdown",
-        "content": "### First login notes\\n- Grafana defaults: `admin` / `admin` (local demo).\\n- Monitoring API key is required for `/metrics`, `/alerts`, and `/decision`.\\n- Dashboard refresh is fixed at `30m`.\\n- `external` mode is optional narrative polish; `local` mode remains authoritative for ranking, risk, forecast, and business impact.\\n- In `external` mode, page loads and each refresh cycle can trigger repeated AI-backed narrative requests because multiple panels query `/decision/focus`.\\n- `watch` is predictive guidance, while formal alerts come from `/monitor` threshold breaches."
+        "content": "### How to read this page\\n- `Current decision` panels use the latest minute in the focus window.\\n- `Forecast` shows `+5m` to `+30m` from that latest minute.\\n- `Historical` charts show hourly context across the focus window.\\n- `Runtime alert log` shows only alerts generated in this session; it does not rebuild historical alert history.\\n- Dashboard refresh is fixed at `30m`.\\n- `external` mode is optional narrative polish; `local` mode remains authoritative for ranking, risk, forecast, and business impact.\\n- In `external` mode, page loads and each refresh cycle can trigger repeated AI-backed narrative requests because multiple panels query `/decision/focus`."
       }
     }
   ],

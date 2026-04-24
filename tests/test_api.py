@@ -4,7 +4,9 @@ import asyncio
 import csv
 import json
 import re
+import shutil
 from pathlib import Path
+from uuid import uuid4
 
 import httpx
 
@@ -139,6 +141,14 @@ def _priority_snapshot(items: list[dict]) -> list[dict]:
     return [{field: item.get(field) for field in fields} for item in items]
 
 
+def _workspace_tmp_path() -> Path:
+    base = Path("logs/pytest-tmp")
+    base.mkdir(parents=True, exist_ok=True)
+    path = base / uuid4().hex
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def test_health_is_public():
     client = SyncASGIClient(create_app(_settings(api_key="secret")))
     resp = client.get("/health")
@@ -252,18 +262,61 @@ def test_payload_limits():
     assert too_large.status_code == 422
 
 
-def test_payload_size_limit_returns_422():
+def test_payload_size_limit_returns_413():
     client = SyncASGIClient(create_app(_settings(max_monitor_request_bytes=100)))
     large_raw = json.dumps(_payload("2025-07-12 15:00:00", auth_code_counts={f"{i:02d}": 1 for i in range(20)}))
     resp = client.post("/monitor", content=large_raw, headers={"content-type": "application/json"})
-    assert resp.status_code == 422
+    assert resp.status_code == 413
 
 
-def test_transaction_payload_size_limit_returns_422():
+def test_payload_size_limit_chunked_stream_returns_413():
+    app = create_app(_settings(max_monitor_request_bytes=100))
+    large_raw = json.dumps(_payload("2025-07-12 15:00:00", auth_code_counts={f"{i:02d}": 1 for i in range(20)}))
+
+    async def _request() -> httpx.Response:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            midpoint = len(large_raw) // 2
+
+            async def _chunked_body():
+                yield large_raw[:midpoint].encode("utf-8")
+                yield large_raw[midpoint:].encode("utf-8")
+
+            return await client.post("/monitor", content=_chunked_body(), headers={"content-type": "application/json"})
+
+    resp = asyncio.run(_request())
+    assert resp.status_code == 413
+
+
+def test_monitor_endpoint_normalizes_timezone_aware_window_end_to_utc():
+    app = create_app(_settings())
+    client = SyncASGIClient(app)
+
+    utc_response = client.post(
+        "/monitor",
+        json=_payload("2025-07-16T00:00:00Z", approved=100, denied=10, failed=1, reversed=1, backend_reversed=0, refunded=0),
+    )
+    offset_response = client.post(
+        "/monitor",
+        json=_payload("2025-07-16T00:00:00-03:00", approved=101, denied=10, failed=1, reversed=1, backend_reversed=0, refunded=0),
+    )
+
+    assert utc_response.status_code == 200
+    assert offset_response.status_code == 200
+    assert utc_response.json()["window_end"].startswith("2025-07-16T00:00:00")
+    assert offset_response.json()["window_end"].startswith("2025-07-16T03:00:00")
+
+    row_utc = next(row for row in app.state.runtime.rows if row.timestamp.isoformat() == "2025-07-16T00:00:00")
+    row_offset = next(row for row in app.state.runtime.rows if row.timestamp.isoformat() == "2025-07-16T03:00:00")
+    assert row_utc.counts["approved"] == 100
+    assert row_offset.counts["approved"] == 101
+
+
+def test_transaction_payload_size_limit_returns_413():
     client = SyncASGIClient(create_app(_settings(max_monitor_request_bytes=30)))
     raw = json.dumps({"timestamp": "2025-07-12 15:00:00", "status": "approved", "auth_code": "1234567890"})
     resp = client.post("/monitor/transaction", content=raw, headers={"content-type": "application/json"})
-    assert resp.status_code == 422
+    assert resp.status_code == 413
 
 
 def test_malformed_content_length_fails_safely():
@@ -727,6 +780,32 @@ def test_transaction_event_endpoint_aggregates_minute_bucket():
     assert row.auth_code_counts == {"51": 1}
 
 
+def test_transaction_event_endpoint_normalizes_timezone_aware_timestamp_to_utc_bucket():
+    cfg = _settings(
+        minimum_total_count=1,
+        minimum_metric_count=1,
+        floor_rate_denied=0.01,
+        warning_multiplier=1.0,
+        critical_multiplier=2.0,
+    )
+    app = create_app(cfg)
+    client = SyncASGIClient(app)
+
+    first = client.post("/monitor/transaction", json={"timestamp": "2025-07-16T00:00:12-03:00", "status": "approved"})
+    second = client.post(
+        "/monitor/transaction",
+        json={"timestamp": "2025-07-16T00:00:35-03:00", "status": "denied", "auth_code": "51"},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["window_end"].startswith("2025-07-16T03:00:00")
+    row = next(row for row in app.state.runtime.rows if row.timestamp.isoformat() == "2025-07-16T03:00:00")
+    assert row.counts["approved"] == 1
+    assert row.counts["denied"] == 1
+    assert row.auth_code_counts == {"51": 1}
+
+
 def test_transaction_event_endpoint_enforces_auth_code_length():
     client = SyncASGIClient(create_app(_settings()))
     response = client.post(
@@ -828,15 +907,15 @@ def test_dashboard_contract_for_decision_first_panels():
     assert dashboard.get("refresh") == "30m"
     assert dashboard.get("time") == {"from": "2025-07-12T13:45:00Z", "to": "2025-07-15T14:14:00Z"}
     titles = {panel.get("title") for panel in dashboard.get("panels", [])}
-    assert "Reviewer Brief: What Needs Attention Right Now" in titles
-    assert "Why Each Metric Is Ranked This Way" in titles
-    assert "What Could Get Worse In The Forecast Window" in titles
-    assert "Evidence Behind The Current Recommendation" in titles
-    assert "Formal Alerts That Have Already Fired" in titles
-    assert "What This Top Issue Means For The Business" in titles
-    assert "How Risk Rates Are Moving Over Time" in titles
-    assert "How Much Traffic These Rates Represent" in titles
-    assert "How To Read This Dashboard On First Login" in titles
+    assert "Current Decision at Latest Minute" in titles
+    assert "Metric Ranking Behind Current Decision" in titles
+    assert "Forecast from Latest Minute (+5m to +30m)" in titles
+    assert "Evidence for Current Decision" in titles
+    assert "Runtime Formal Alert Log (This Session)" in titles
+    assert "Business Impact of Current Top Metric" in titles
+    assert "Historical Hourly Risk Rates (Focus Window)" in titles
+    assert "Historical Hourly Volume (Focus Window)" in titles
+    assert "How to Read This Page" in titles
 
     panel1 = _target_for_panel(dashboard, 1)
     assert panel1["format"] == "table"
@@ -867,35 +946,25 @@ def test_dashboard_contract_for_decision_first_panels():
     assert _has_column(panel2.get("columns", []), "Metric under review", "string")
     assert _has_column(panel2.get("columns", []), "Action level now", "string")
     assert _has_column(panel2.get("columns", []), "Formal alert severity now", "string")
-    assert _has_column(panel2.get("columns", []), "Priority score (0-100)", "number")
-    assert _has_column(panel2.get("columns", []), "Confidence in this ranking (%)", "number")
     assert _has_column(panel2.get("columns", []), "Current rate now (%)", "number")
     assert _has_column(panel2.get("columns", []), "Typical baseline rate (%)", "number")
     assert _has_column(panel2.get("columns", []), "Forecast rate within horizon (%)", "number")
-    assert _has_column(panel2.get("columns", []), "Top authorization-code clues", "string")
-    assert _has_column(panel2.get("columns", []), "Above baseline now (percentage points)", "number")
-    assert _has_column(panel2.get("columns", []), "Above baseline within forecast horizon (percentage points)", "number")
-    assert _has_column(panel2.get("columns", []), "Gap before formal warning (percentage points remaining)", "number")
-    assert _has_column(panel2.get("columns", []), "Extra affected transactions now (approx.)", "number")
-    assert _has_column(panel2.get("columns", []), "Extra affected transactions within forecast horizon (approx.)", "number")
-    assert _has_column(panel2.get("columns", []), "Business area affected", "string")
+    assert _has_column(panel2.get("columns", []), "Distance to formal warning threshold", "number")
     assert _has_column(panel2.get("columns", []), "Team likely to act", "string")
     assert _has_column(panel2.get("columns", []), "Recommended next step", "string")
+    assert _has_column(panel2.get("columns", []), "Auth-code context at latest minute", "string")
     panel2_full = _panel_by_id(dashboard, 2)
-    assert _has_percent_override(panel2_full, "Confidence in this ranking (%)")
     assert _has_percent_override(panel2_full, "Current rate now (%)")
     assert _has_percent_override(panel2_full, "Typical baseline rate (%)")
     assert _has_percent_override(panel2_full, "Forecast rate within horizon (%)")
-    assert _has_percent_override(panel2_full, "Above baseline now (percentage points)")
-    assert _has_percent_override(panel2_full, "Above baseline within forecast horizon (percentage points)")
-    assert _has_percent_override(panel2_full, "Gap before formal warning (percentage points remaining)")
+    assert _has_percent_override(panel2_full, "Distance to formal warning threshold")
 
     panel4 = _target_for_panel(dashboard, 4)
     assert panel4["url"] == "http://api:8000/decision/focus"
     assert _has_column(panel4.get("columns", []), "Recorded at", "timestamp")
     assert _has_column(panel4.get("columns", []), "Evidence source", "string")
     assert _has_column(panel4.get("columns", []), "What this evidence says", "string")
-    assert _has_column(panel4.get("columns", []), "Supporting authorization-code context", "string")
+    assert _has_column(panel4.get("columns", []), "Auth-code context at latest minute", "string")
 
     panel5 = _target_for_panel(dashboard, 5)
     assert panel5["format"] == "table"
@@ -916,20 +985,22 @@ def test_dashboard_contract_for_decision_first_panels():
 
     panel9 = _target_for_panel(dashboard, 9)
     assert panel9["url"] == "http://api:8000/decision/focus"
-    assert _has_column(panel9.get("columns", []), "Top metric driving the issue", "string")
-    assert _has_column(panel9.get("columns", []), "Business area affected", "string")
-    assert _has_column(panel9.get("columns", []), "Team likely to act", "string")
-    assert _has_column(panel9.get("columns", []), "Above baseline now (percentage points)", "number")
-    assert _has_column(panel9.get("columns", []), "Gap before formal warning (percentage points remaining)", "number")
-    assert _has_column(panel9.get("columns", []), "Extra affected transactions now (approx.)", "number")
-    assert _has_column(panel9.get("columns", []), "Extra affected transactions within forecast horizon (approx.)", "number")
+    assert _has_column(panel9.get("columns", []), "Metric", "string")
+    assert _has_column(panel9.get("columns", []), "Business area", "string")
+    assert _has_column(panel9.get("columns", []), "Team", "string")
+    assert _has_column(panel9.get("columns", []), "Gap vs normal", "number")
+    assert _has_column(panel9.get("columns", []), "Gap to warning", "number")
+    assert _has_column(panel9.get("columns", []), "Excess now", "number")
+    assert _has_column(panel9.get("columns", []), "Excess in 30m", "number")
     panel9_full = _panel_by_id(dashboard, 9)
-    assert _has_percent_override(panel9_full, "Above baseline now (percentage points)")
-    assert _has_percent_override(panel9_full, "Gap before formal warning (percentage points remaining)")
+    assert _has_percent_override(panel9_full, "Gap vs normal")
+    assert _has_percent_override(panel9_full, "Gap to warning")
 
     panel8 = _panel_by_id(dashboard, 8)
     panel8_content = panel8.get("options", {}).get("content", "")
     assert "Dashboard refresh is fixed at `30m`." in panel8_content
+    assert "`Current decision` panels use the latest minute in the focus window." in panel8_content
+    assert "`Runtime alert log` shows only alerts generated in this session" in panel8_content
     assert "`external` mode is optional narrative polish;" in panel8_content
     assert "page loads and each refresh cycle can trigger repeated AI-backed narrative requests" in panel8_content
 
@@ -958,7 +1029,7 @@ def test_smoke_script_checks_decision_and_dashboard_contract():
     assert "${TEAM_RECEIVER_URL}/health" in script
     assert "/notifications" in script
     assert "team-notification payload" in script or "Team notification delivery" in script
-    assert "python3 scripts/check_grafana_dashboard_contract.py" in script
+    assert "python3 scripts/check_grafana_dashboard_contract.py" in script or "/app/scripts/check_grafana_dashboard_contract.py" in script
     assert "./scripts/check_grafana_dashboard_playwright.sh" in script
 
 
@@ -1033,86 +1104,94 @@ def test_checkout_docs_explain_evidence_review_scope():
     assert "Dashboard refresh is fixed at `30m` for reviewer clarity." in system_map
 
 
-def test_checkout_analysis_enriches_anomaly_csv_contract(tmp_path):
+def test_checkout_analysis_enriches_anomaly_csv_contract():
     from scripts.checkout_analysis import analyze_checkout
 
-    output_path = tmp_path / "checkout_1_anomaly.csv"
-    analyze_checkout(Path("database/checkout_1.csv"), output_path)
+    tmp_path = _workspace_tmp_path()
+    try:
+        output_path = tmp_path / "checkout_1_anomaly.csv"
+        analyze_checkout(Path("database/checkout_1.csv"), output_path)
 
-    with output_path.open(newline="", encoding="utf-8") as handle:
-        rows = list(csv.DictReader(handle))
+        with output_path.open(newline="", encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
 
-    assert rows
-    assert {
-        "baseline",
-        "absolute_deviation",
-        "relative_deviation",
-        "is_material",
-        "direction",
-        "zero_gap",
-        "severity_score",
-    }.issubset(rows[0].keys())
+        assert rows
+        assert {
+            "baseline",
+            "absolute_deviation",
+            "relative_deviation",
+            "is_material",
+            "direction",
+            "zero_gap",
+            "severity_score",
+        }.issubset(rows[0].keys())
 
-    row_08h = next(row for row in rows if row["time"] == "08h")
-    row_09h = next(row for row in rows if row["time"] == "09h")
-    assert row_08h["is_material"] == "true"
-    assert row_08h["direction"] == "drop"
-    assert row_08h["zero_gap"] == "true"
-    assert float(row_08h["severity_score"]) > 0
-    assert row_09h["direction"] == "drop"
-    assert row_09h["zero_gap"] == "false"
+        row_08h = next(row for row in rows if row["time"] == "08h")
+        row_09h = next(row for row in rows if row["time"] == "09h")
+        assert row_08h["is_material"] == "true"
+        assert row_08h["direction"] == "drop"
+        assert row_08h["zero_gap"] == "true"
+        assert float(row_08h["severity_score"]) > 0
+        assert row_09h["direction"] == "drop"
+        assert row_09h["zero_gap"] == "false"
+    finally:
+        shutil.rmtree(tmp_path, ignore_errors=True)
 
 
-def test_checkout_chart_generator_uses_anomaly_csv_and_emits_investigation_markers(tmp_path):
+def test_checkout_chart_generator_uses_anomaly_csv_and_emits_investigation_markers():
     from scripts.checkout_analysis import analyze_checkout
     from scripts.generate_checkout_charts import generate_chart
 
-    checkout_1_anomaly = tmp_path / "checkout_1_anomaly.csv"
-    checkout_2_anomaly = tmp_path / "checkout_2_anomaly.csv"
-    checkout_1_svg = tmp_path / "checkout_1.svg"
-    checkout_2_svg = tmp_path / "checkout_2.svg"
+    tmp_path = _workspace_tmp_path()
+    try:
+        checkout_1_anomaly = tmp_path / "checkout_1_anomaly.csv"
+        checkout_2_anomaly = tmp_path / "checkout_2_anomaly.csv"
+        checkout_1_svg = tmp_path / "checkout_1.svg"
+        checkout_2_svg = tmp_path / "checkout_2.svg"
 
-    analyze_checkout(Path("database/checkout_1.csv"), checkout_1_anomaly)
-    analyze_checkout(Path("database/checkout_2.csv"), checkout_2_anomaly)
-    generate_chart(checkout_1_anomaly, checkout_1_svg, "Checkout 1 Investigation Summary")
-    generate_chart(checkout_2_anomaly, checkout_2_svg, "Checkout 2 Investigation Summary")
+        analyze_checkout(Path("database/checkout_1.csv"), checkout_1_anomaly)
+        analyze_checkout(Path("database/checkout_2.csv"), checkout_2_anomaly)
+        generate_chart(checkout_1_anomaly, checkout_1_svg, "Checkout 1 Investigation Summary")
+        generate_chart(checkout_2_anomaly, checkout_2_svg, "Checkout 2 Investigation Summary")
 
-    checkout_1_text = checkout_1_svg.read_text(encoding="utf-8")
-    checkout_2_text = checkout_2_svg.read_text(encoding="utf-8")
+        checkout_1_text = checkout_1_svg.read_text(encoding="utf-8")
+        checkout_2_text = checkout_2_svg.read_text(encoding="utf-8")
 
-    assert "Today" in checkout_1_text
-    assert "Expected" in checkout_1_text
-    assert "WATCH" in checkout_1_text
-    assert "Investigate first" in checkout_1_text
-    assert "does this checkout deserve investigation before the others?" in checkout_1_text
-    assert "Evidence review prioritizes suspicious windows." in checkout_1_text
-    assert "Yesterday" not in checkout_1_text
-    assert "Avg Last Week" not in checkout_1_text
-    assert "Avg Last Month" not in checkout_1_text
-    assert "08h-09h zero-gap drop" not in checkout_1_text
-    assert "08h-09h drop" in checkout_1_text
-    assert "zero-gap at 08h" in checkout_1_text
+        assert "Today" in checkout_1_text
+        assert "Expected" in checkout_1_text
+        assert "WATCH" in checkout_1_text
+        assert "Investigate first" in checkout_1_text
+        assert "does this checkout deserve investigation before the others?" in checkout_1_text
+        assert "Evidence review prioritizes suspicious windows." in checkout_1_text
+        assert "Yesterday" not in checkout_1_text
+        assert "Avg Last Week" not in checkout_1_text
+        assert "Avg Last Month" not in checkout_1_text
+        assert "08h-09h zero-gap drop" not in checkout_1_text
+        assert "08h-09h drop" in checkout_1_text
+        assert "zero-gap at 08h" in checkout_1_text
 
-    assert "Today" in checkout_2_text
-    assert "Expected" in checkout_2_text
-    assert "INVESTIGATE NOW" in checkout_2_text
-    assert "Investigate first" in checkout_2_text
-    assert "does this checkout deserve investigation before the others?" in checkout_2_text
-    assert "Evidence review prioritizes suspicious windows." in checkout_2_text
-    assert "15h-17h zero-gap drop" in checkout_2_text
+        assert "Today" in checkout_2_text
+        assert "Expected" in checkout_2_text
+        assert "INVESTIGATE NOW" in checkout_2_text
+        assert "Investigate first" in checkout_2_text
+        assert "does this checkout deserve investigation before the others?" in checkout_2_text
+        assert "Evidence review prioritizes suspicious windows." in checkout_2_text
+        assert "15h-17h zero-gap drop" in checkout_2_text
 
-    checkout_1_first_card = re.search(
-        r'<rect x="860\.00" y="([0-9.]+)" width="320\.00" height="[0-9.]+" rx="14" fill="#ffffff" stroke="#d7d0c5" /><circle cx="882\.00" cy="[0-9.]+" r="12" fill="#b42318"',
-        checkout_1_text,
-    )
-    checkout_2_first_card = re.search(
-        r'<rect x="860\.00" y="([0-9.]+)" width="320\.00" height="[0-9.]+" rx="14" fill="#ffffff" stroke="#d7d0c5" /><circle cx="882\.00" cy="[0-9.]+" r="12" fill="#b42318"',
-        checkout_2_text,
-    )
-    assert checkout_1_first_card is not None
-    assert checkout_2_first_card is not None
-    assert float(checkout_1_first_card.group(1)) > 340
-    assert float(checkout_2_first_card.group(1)) > 340
+        checkout_1_first_card = re.search(
+            r'<rect x="860\.00" y="([0-9.]+)" width="320\.00" height="[0-9.]+" rx="14" fill="#ffffff" stroke="#d7d0c5" /><circle cx="882\.00" cy="[0-9.]+" r="12" fill="#b42318"',
+            checkout_1_text,
+        )
+        checkout_2_first_card = re.search(
+            r'<rect x="860\.00" y="([0-9.]+)" width="320\.00" height="[0-9.]+" rx="14" fill="#ffffff" stroke="#d7d0c5" /><circle cx="882\.00" cy="[0-9.]+" r="12" fill="#b42318"',
+            checkout_2_text,
+        )
+        assert checkout_1_first_card is not None
+        assert checkout_2_first_card is not None
+        assert float(checkout_1_first_card.group(1)) > 340
+        assert float(checkout_2_first_card.group(1)) > 340
+    finally:
+        shutil.rmtree(tmp_path, ignore_errors=True)
 
 
 def test_api_entrypoint_bootstrap_fail_fast_contract():

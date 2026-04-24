@@ -40,7 +40,8 @@ Date: 2026-04-23
   - initialize `AlertEngine` and in-memory runtime state
   - build initial metrics timeline from historical rows
 - Request flow:
-  - `MonitorPayloadLimitMiddleware` enforces max body size for `/monitor` and `/monitor/transaction`
+  - `MonitorPayloadLimitMiddleware` enforces `MAX_MONITOR_REQUEST_BYTES` at ASGI receive level for `/monitor` and `/monitor/transaction`
+  - oversized monitor payloads are rejected early with `413 Payload Too Large` and malformed `Content-Length` fails with `422`
   - API key dependency guard validates `X-API-Key` when key configured
   - `/monitor` evaluates aggregate minute-window counts against baseline + floors + multipliers
   - `/monitor/transaction` normalizes a single event into its minute bucket and reuses the same alert workflow
@@ -75,6 +76,7 @@ From environment (`app/config.py`, `.env.example`, `docker-compose.yml`):
 - Auth: `MONITORING_API_KEY`
 - Team notification: `TEAM_NOTIFICATION_WEBHOOK_URL`, `TEAM_NOTIFICATION_TIMEOUT_SECONDS`
 - Request safety: `MAX_MONITOR_REQUEST_BYTES`, `MAX_COUNT_VALUE`, `MAX_AUTH_CODE_KEYS`, `MAX_AUTH_CODE_KEY_LENGTH`
+- monitor body-size enforcement is receive-level and returns early `413` on oversized monitor requests
 - Baseline/noise control: `MINIMUM_TOTAL_COUNT`, `MINIMUM_METRIC_COUNT`, `BASELINE_WINDOW_MINUTES`, `COOLDOWN_MINUTES`
 - Threshold tuning: `FLOOR_RATE_DENIED`, `FLOOR_RATE_FAILED`, `FLOOR_RATE_REVERSED`, `WARNING_MULTIPLIER`, `CRITICAL_MULTIPLIER`
 - Decision runtime: `DECISION_ENGINE_MODE`, `DECISION_LOOKBACK_MINUTES`, `DECISION_FORECAST_HORIZON_MINUTES`, `DECISION_FORECAST_STEP_MINUTES`, `DECISION_MIN_HISTORY_POINTS`

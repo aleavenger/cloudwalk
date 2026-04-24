@@ -81,6 +81,8 @@ Primary reviewer startup path:
 - Denied spike: the minute ending `2025-07-12 17:18:00` had 54 denied transactions, pushing denied behavior above the configured normal range and triggering a formal alert.
 - Failed spike: the minute ending `2025-07-15 04:30:00` had 10 failed transactions, crossing the failed-rate threshold and triggering a formal alert.
 - Reversed spike: the minute ending `2025-07-14 06:33:00` had 7 reversed transactions, crossing the reversed-rate threshold and triggering a formal alert.
+- These three timestamps are dataset-replay evidence (explicit `POST /monitor` windows), not pre-seeded startup alert-history rows.
+- In one-click reviewer bootstrap, smoke checks intentionally inject one fresh denied alert at the current UTC minute to validate notification delivery, so a clean runtime often shows only that single alert in the dashboard table until more windows are replayed.
 
 ### Which Authorization Codes Explain Spikes
 - Dominant `00` authorization volume tracks approvals.
@@ -123,7 +125,8 @@ Challenge 3.2 runtime implementation:
 - Default local bind host: `127.0.0.1`
 - Optional API key for `POST /monitor`, `POST /monitor/transaction`, `GET /metrics`, `GET /metrics/recent`, `GET /metrics/focus`, `GET /alerts`, `GET /decision`, `GET /decision/focus`, and `GET /decision/forecast/focus` via `MONITORING_API_KEY`
 - Payload protections on `/monitor` and `/monitor/transaction`:
-  - max body size: 64 KB, which bounds request payload size before anomaly logic executes.
+  - max body size: 64 KB (`MAX_MONITOR_REQUEST_BYTES`) enforced at ASGI receive level for monitor endpoints.
+  - oversized request bodies are rejected early with `413 Payload Too Large`; malformed `Content-Length` fails safely with `422`.
   - max count value: 1,000,000 per count field, preventing unrealistic spikes from malformed payloads.
   - max auth code keys: 32, limiting auth-code cardinality per request.
   - max auth code key length: 16 characters, preventing oversized or unsafe auth-code keys.

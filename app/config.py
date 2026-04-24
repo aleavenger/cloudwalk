@@ -79,7 +79,7 @@ def load_settings() -> Settings:
         decision_lookback_minutes=int(os.getenv("DECISION_LOOKBACK_MINUTES", "15")),
         decision_forecast_horizon_minutes=int(os.getenv("DECISION_FORECAST_HORIZON_MINUTES", "30")),
         decision_forecast_step_minutes=int(os.getenv("DECISION_FORECAST_STEP_MINUTES", "5")),
-        decision_min_history_points=int(os.getenv("DECISION_MIN_HISTORY_POINTS", "1")),
+        decision_min_history_points=int(os.getenv("DECISION_MIN_HISTORY_POINTS", "5")),
         external_ai_provider=external_ai_provider,
         external_ai_model=os.getenv("EXTERNAL_AI_MODEL"),
         external_ai_api_key=os.getenv("EXTERNAL_AI_API_KEY"),

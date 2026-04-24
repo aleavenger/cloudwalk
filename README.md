@@ -10,7 +10,7 @@ This repository covers two linked challenge tracks:
 This submission was built with AI assistance, but under explicit engineering constraints and close human review.
 
 - AI was used to accelerate implementation, refactoring, and documentation iterations.
-- Human review kept the final repository reviewer-safe by checking authenticated endpoints, bounded payload validation, deterministic alert rules, sanitized logging, and end-to-end behavior.
+- Human review kept the final repository reviewer-safe by checking authenticated endpoints, bounded streaming payload validation, deterministic alert rules, sanitized logging, and end-to-end behavior.
 - Final validation was done against the challenge datasets, SQL outputs, generated charts, API contracts, automated tests, and smoke checks.
 - Internal tool/process files and generated local logs are intentionally excluded from the submission view because they do not change runtime behavior or challenge evidence.
 
@@ -78,12 +78,17 @@ Clarification:
 - Grafana panels do not read those checkout anomaly CSVs directly; they query API endpoints backed by `database/transactions.csv` and `database/transactions_auth_codes.csv`.
 
 Reviewer-facing deliverables:
-- start here for reviewer workflow and reproducibility: `README.md`
-- presentation deck: `report/presentation.md`
-- technical report: `report/technical_report.md`
+- primary reviewer-facing deliverable: `report/presentation.md`
+- start here for reviewer workflow, bootstrap, and reproducibility: `README.md`
+- supporting technical detail: `report/technical_report.md`
 - methodology reference: `docs/monitoring-methodology.md`
 - architecture reference: `SYSTEM_MAP.md`
 - original challenge prompt mirrored in the repo: `database/monitoring-test.md`
+
+Review guidance:
+- if reviewing only one challenge document, read `report/presentation.md`
+- `README.md` is the operational entrypoint
+- `report/technical_report.md` is supplementary depth, not a second required primary deliverable
 
 Optional smoke rerun after startup:
 
@@ -123,6 +128,9 @@ Thresholds are baseline-aware rather than arbitrary constants:
   - `127.0.0.1:8010` for the mock team receiver
 - `/health` is public.
 - `/monitor`, `/monitor/transaction`, `/metrics`, `/metrics/recent`, `/metrics/focus`, `/alerts`, `/decision`, `/decision/focus`, and `/decision/forecast/focus` require `X-API-Key` when `MONITORING_API_KEY` is set (enabled by default in one-click mode).
+- `MAX_MONITOR_REQUEST_BYTES` (default `65536`) controls request-size protection for `/monitor` and `/monitor/transaction`.
+- Monitor endpoints enforce payload size at ASGI receive level and reject oversized bodies early with `413 Payload Too Large`.
+- Malformed `Content-Length` on monitor endpoints fails safely with `422 Unprocessable Content`.
 - Generated reviewer artifacts are written on host under `database/report/` and `charts/`.
 - Runtime logs are written on host under `logs/`.
 - Compose host mounts include `database/`, `charts/`, `grafana/`, `logs/`, and `sql/`.
@@ -134,7 +142,7 @@ Monitoring ingestion paths:
 - `GET /metrics/recent?days=5`: compatibility endpoint for latest-anchored metrics slices.
 - `GET /metrics/focus?bucket=hour|minute`: returns the newest eligible data cluster for dashboard charts; Grafana uses `bucket=hour`.
 - `GET /decision/focus`: returns decision, evidence, business impact, and forecast for the selected dashboard focus cluster.
-- `GET /decision/forecast/focus`: returns the focused forecast as relative-horizon rows (`+5m`, `+10m`, ...) for the "What Could Get Worse In The Forecast Window" panel.
+- `GET /decision/forecast/focus`: returns the focused forecast as relative-horizon rows (`+5m`, `+10m`, ...) for the "Forecast from Latest Minute (+5m to +30m)" panel.
 
 Why both ingestion endpoints exist:
 
@@ -165,7 +173,7 @@ Decision guidance modes:
 - Supported external providers: `openai`, `anthropic`, `google`.
 - In interactive reviewer bootstrap mode, OpenAI external prompt defaults to `gpt-4.1-mini` unless you choose another model.
 - In raw compose mode without bootstrap-selected model, defaults are `EXTERNAL_AI_PROVIDER=openai` and `EXTERNAL_AI_MODEL=gpt-4o-mini` when those variables are not set.
-- Default `DECISION_MIN_HISTORY_POINTS=1` is demo-oriented and `/decision` shows a forecast warning when this test value is used; production recommendation is `5`.
+- Default `DECISION_MIN_HISTORY_POINTS=5` for stronger forecast stability; if set to `1` for test/demo behavior, `/decision` includes a forecast warning.
 - For `openai`, optional `EXTERNAL_AI_BASE_URL` enables OpenAI-compatible endpoints (for example `https://openrouter.ai/api/v1`); leave it empty to use official OpenAI.
 - External failures safely fall back to local output and expose sanitized provider status in `/decision`.
 - When `external` mode is enabled, opening the dashboard or waiting for its `30m` refresh can trigger multiple AI-backed narrative requests per refresh cycle because several panels query `/decision/focus`.
@@ -195,7 +203,7 @@ The rendered dashboard time range is absolute and follows the newest eligible da
 The dashboard is organized in business reading order: current priority, business impact, forecast/evidence, trend context, formal alert history, then deeper metric-ranking detail.
 The provisioned dashboard refresh is fixed at `30m` so repeated external narrative calls are explicit and bounded.
 When `external` mode is enabled, page loads and refresh cycles can trigger multiple AI-backed narrative requests because several panels query `/decision/focus`.
-The "What Could Get Worse In The Forecast Window" panel is the exception: it uses a relative horizon axis so short-horizon forecast bars stay readable instead of being compressed by the dashboard-wide cluster window.
+The "Forecast from Latest Minute (+5m to +30m)" panel is the exception: it uses a relative horizon axis so short-horizon forecast bars stay readable instead of being compressed by the dashboard-wide cluster window.
 Auth-code evidence is rendered as readable dashboard strings such as `51 Insufficient funds x6` while the API still keeps the structured top-code tuples for machine consumers.
 Decision/business-impact panels render confidence and rate values with percent-based human-readable units while API fields remain raw numeric values.
 

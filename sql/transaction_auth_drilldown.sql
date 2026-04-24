@@ -1,3 +1,11 @@
+WITH transactions AS (
+    SELECT *
+    FROM read_csv_auto('database/transactions.csv')
+),
+transactions_auth_codes AS (
+    SELECT *
+    FROM read_csv_auto('database/transactions_auth_codes.csv')
+)
 SELECT
     t.timestamp,
     t.status,
