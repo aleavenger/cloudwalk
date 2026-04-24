@@ -28,16 +28,19 @@ The challenge is not only detection. It is also deciding which anomalies matter 
 
 ---
 
-# What Was Built
+# Challenge 3.1: Checkout Investigation
 
-The repository implements an end-to-end local monitoring flow:
+The first task is an investigation, not just a chart export:
 
-- SQL-style checkout anomaly analysis with generated CSV artifacts
-- generated SVG charts for checkout behavior
-- FastAPI service for aggregate and single-transaction monitoring
-- baseline-aware alert engine with cooldown suppression
-- Grafana dashboard for decision, forecast, alert, and metric views
-- local mock team receiver for webhook delivery checks
+- which checkout should be investigated first
+- what evidence supports that prioritization
+- what should an analyst check next before claiming root cause
+
+Ranking is based on structural interruption risk, not on whichever checkout moved furthest for the full day.
+Multi-hour zero-gap drops outrank broad uplift.
+
+The first-challenge evidence set is the checkout CSVs, the SQL-style anomaly outputs, and the generated SVG charts.
+The FastAPI service, alerting flow, and Grafana dashboard answer the second task and help validate runtime behavior, but they are not the basis for the checkout conclusion.
 
 Primary reviewer entrypoint:
 
@@ -56,32 +59,48 @@ Canonical data:
 - `database/transactions.csv`
 - `database/transactions_auth_codes.csv`
 
-Generated evidence:
+First-challenge evidence set:
 
 - `database/report/checkout_1_anomaly.csv`
 - `database/report/checkout_2_anomaly.csv`
+- `sql/checkout_1_anomaly.sql`
+- `sql/checkout_2_anomaly.sql`
 - `charts/checkout_1.svg`
 - `charts/checkout_2.svg`
+
+Second-challenge runtime support:
+
 - `grafana/dashboard.json`
+- FastAPI monitoring and decision endpoints
+
+Supporting narrative:
+
 - `report/technical_report.md`
 
 Runtime logs are not used as canonical evidence because smoke tests and manual replays can append synthetic alert records.
+The checkout anomaly CSVs and SVGs support the first challenge writeup; the Grafana dashboard panels are sourced from monitoring API endpoints backed by the transaction datasets.
 
 ---
 
 # Checkout Findings
 
-`checkout_2` is the stronger structural anomaly:
+`checkout_2` should be investigated first.
 
-- `08h`: 25 today vs 8.51 baseline, +193.77%
-- `09h`: 36 today vs 18.26 baseline, +97.15%
-- `15h`, `16h`, and `17h`: 0 today against material baselines
+- `08h`: 25 today vs 8.51 expected, +193.77%
+- `09h`: 36 today vs 18.26 expected, +97.15%
+- `15h`, `16h`, and `17h`: 0 today against material expected volumes
 
-`checkout_1` shows higher net uplift but less structural disruption:
+This is the strongest structural anomaly in the checkout data because it combines an early surge with a later interruption.
+Priority comes from interruption risk, not from having the biggest full-day net deviation.
 
-- total today: 526 vs 431.58 baseline, +21.88%
-- largest uplift at `17h`: 45 today vs 23.90 baseline
-- other material uplift at `10h`, `12h`, and `15h`
+`checkout_1` is secondary and remains `watch`, not `recovering`:
+
+- total today: 526 vs 431.58 expected, +21.88%
+- weak morning hours at `08h` and `09h`
+- stronger later hours at `10h`, `12h`, `17h`, and `22h`
+
+That keeps `checkout_1` abnormal enough to watch, but it does not show the same zero-gap interruption pattern.
+`Expected` is a blended baseline because yesterday remains useful evidence but is noisier when used alone.
 
 Chart evidence:
 
@@ -89,24 +108,31 @@ Chart evidence:
 
 ---
 
-# Checkout 2 Pattern
+# Why Checkout 2 Comes First
 
 `checkout_2` shows a morning surge followed by a sharp afternoon gap.
 
-This pattern is operationally more suspicious than a single high hour because it combines:
+This pattern is more investigation-worthy than simple uplift because the ranking rule prioritizes structural interruption risk, and it combines:
 
 - a demand surge at `08h` and `09h`
-- continued elevated behavior through midday
+- continued strength before the interruption
 - complete dropouts at `15h`, `16h`, and `17h`
 
-That suggests the reviewer should inspect time-specific business or system behavior, not just total daily volume.
+This prioritization does not prove root cause. It says `checkout_2` has the clearest evidence for first follow-up.
+
+Next questions for an analyst:
+
+- did a routing, staff, or terminal change happen before `15h`
+- was there a payment-provider or ingestion issue during the zero-gap window
+- did traffic move to another checkout rather than disappear outright
 
 ![Checkout 2 anomaly chart](../charts/checkout_2.svg)
 
 ---
 
-# Transaction Baseline
+# Challenge 3.2: Runtime Monitoring And Alerting
 
+# Transaction Baseline
 The transaction dataset is continuous and internally consistent:
 
 - data range: `2025-07-12 13:45:00` to `2025-07-15 13:44:00`
@@ -188,7 +214,7 @@ The alert model is deterministic and baseline-aware:
 - minimum total volume: 80 transactions
 - minimum metric count: 3 denied, failed, or reversed events
 - warning threshold: max configured floor, baseline x 2.0
-- critical threshold: max configured critical floor, baseline x 3.0
+- critical threshold: max(configured floor x 1.5, baseline x 3.0)
 - cooldown: suppress repeated metric + severity alerts for 10 minutes
 
 This keeps the system sensitive to real spikes while reducing noise from low-volume minutes.
@@ -220,7 +246,7 @@ Interpretation:
 The implementation protects the reviewer runtime with:
 
 - localhost-only Docker port bindings
-- optional API key on monitoring, metrics, alerts, and decision endpoints
+- optional API key on monitoring endpoints, metrics endpoints (`/metrics`, `/metrics/recent`, `/metrics/focus`), alerts, and decision endpoints (`/decision`, `/decision/focus`, `/decision/forecast/focus`)
 - request body size limits
 - count and auth-code validation
 - aggregate-only alert metadata
@@ -230,16 +256,24 @@ Runtime log files under `logs/` are operational artifacts. They are useful for l
 
 ---
 
-# Conclusion
+# Follow-Up
 
-The case shows concentrated payment-friction incidents, plus smaller platform and reconciliation spikes.
+This investigation supports a clear triage order:
 
-What the system proves:
+- `checkout_2` should be investigated first
+- `checkout_1` should stay on watch as a secondary checkout issue
+- transaction monitoring remains the second-challenge runtime layer for real-time alerting and operator guidance
+
+What this evidence supports:
 
 - checkout anomalies are reproducible from SQL-style baseline comparisons
+- the checkout charts identify which window deserves first follow-up
 - transaction alerting catches denied, failed, and reversed behavior above normal
-- cooldown reduces repeated alert noise
-- auth-code enrichment explains likely ownership and triage path
-- Grafana and `/decision` translate raw rates into reviewer-facing action guidance
+- Grafana focus endpoints and `/decision` outputs translate raw rates into reviewer-facing action guidance
 
-Bottom line: the monitoring workflow identifies business-relevant smoke without treating every noisy minute as fire.
+What this evidence does not prove:
+
+- the exact business or system root cause behind the checkout interruption
+- whether the `15h`-`17h` gap was routing, operational, or data-collection related
+
+Bottom line: the monitoring workflow prioritizes business-relevant smoke without pretending every anomaly is already explained.

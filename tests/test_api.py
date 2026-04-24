@@ -1,13 +1,41 @@
 from __future__ import annotations
 
+import asyncio
+import csv
 import json
+import re
 from pathlib import Path
 
 import httpx
-from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+
+
+class SyncASGIClient:
+    """Sync test helper backed by httpx ASGITransport.
+
+    TestClient hangs in this environment, so tests use a sync wrapper that
+    executes async in-process requests through asyncio.run.
+    """
+
+    def __init__(self, app, base_url: str = "http://testserver") -> None:
+        self.app = app
+        self.base_url = base_url
+
+    def request(self, method: str, url: str, **kwargs) -> httpx.Response:
+        async def _call() -> httpx.Response:
+            transport = httpx.ASGITransport(app=self.app)
+            async with httpx.AsyncClient(transport=transport, base_url=self.base_url) as client:
+                return await client.request(method, url, **kwargs)
+
+        return asyncio.run(_call())
+
+    def get(self, url: str, **kwargs) -> httpx.Response:
+        return self.request("GET", url, **kwargs)
+
+    def post(self, url: str, **kwargs) -> httpx.Response:
+        return self.request("POST", url, **kwargs)
 
 
 def _settings(api_key: str | None = None, **overrides) -> Settings:
@@ -112,14 +140,14 @@ def _priority_snapshot(items: list[dict]) -> list[dict]:
 
 
 def test_health_is_public():
-    client = TestClient(create_app(_settings(api_key="secret")))
+    client = SyncASGIClient(create_app(_settings(api_key="secret")))
     resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.json() == {"status": "ok"}
 
 
 def test_protected_endpoints_require_api_key():
-    client = TestClient(create_app(_settings(api_key="secret")))
+    client = SyncASGIClient(create_app(_settings(api_key="secret")))
     assert client.get("/metrics").status_code == 401
     assert client.get("/metrics/focus").status_code == 401
     assert client.get("/metrics/recent").status_code == 401
@@ -132,7 +160,7 @@ def test_protected_endpoints_require_api_key():
 
 
 def test_valid_api_key_allows_access():
-    client = TestClient(create_app(_settings(api_key="secret")))
+    client = SyncASGIClient(create_app(_settings(api_key="secret")))
     headers = {"X-API-Key": "secret"}
     assert client.get("/metrics", headers=headers).status_code == 200
     assert client.get("/metrics/focus", headers=headers).status_code == 200
@@ -144,7 +172,7 @@ def test_valid_api_key_allows_access():
 
 
 def test_monitor_contract_and_422():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     bad = _payload("2025-07-12 14:00:00")
     bad["denied"] = "oops"
     resp = client.post("/monitor", json=bad)
@@ -162,7 +190,7 @@ def test_monitor_contract_and_422():
 
 
 def test_low_volume_suppression():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     resp = client.post(
         "/monitor",
         json=_payload("2025-07-12 14:01:00", approved=10, denied=3, failed=0, reversed=0, backend_reversed=0, refunded=0),
@@ -173,7 +201,7 @@ def test_low_volume_suppression():
 
 
 def test_known_dataset_spikes_alert():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     denied_spike = client.post(
         "/monitor",
         json=_payload("2025-07-12 17:18:00", approved=100, denied=54, failed=1, reversed=1, backend_reversed=1, refunded=1),
@@ -200,7 +228,7 @@ def test_known_dataset_spikes_alert():
 
 
 def test_cooldown_dedup_and_alert_history():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     payload = _payload("2025-07-12 17:18:00", approved=100, denied=54, failed=1, reversed=1, backend_reversed=1, refunded=1)
     first = client.post("/monitor", json=payload).json()
     second = client.post("/monitor", json=payload).json()
@@ -215,7 +243,7 @@ def test_cooldown_dedup_and_alert_history():
 
 
 def test_payload_limits():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     too_many_codes = {f"{i:02d}": 1 for i in range(33)}
     resp = client.post("/monitor", json=_payload("2025-07-12 15:00:00", auth_code_counts=too_many_codes))
     assert resp.status_code == 422
@@ -225,21 +253,21 @@ def test_payload_limits():
 
 
 def test_payload_size_limit_returns_422():
-    client = TestClient(create_app(_settings(max_monitor_request_bytes=100)))
+    client = SyncASGIClient(create_app(_settings(max_monitor_request_bytes=100)))
     large_raw = json.dumps(_payload("2025-07-12 15:00:00", auth_code_counts={f"{i:02d}": 1 for i in range(20)}))
     resp = client.post("/monitor", content=large_raw, headers={"content-type": "application/json"})
     assert resp.status_code == 422
 
 
 def test_transaction_payload_size_limit_returns_422():
-    client = TestClient(create_app(_settings(max_monitor_request_bytes=30)))
+    client = SyncASGIClient(create_app(_settings(max_monitor_request_bytes=30)))
     raw = json.dumps({"timestamp": "2025-07-12 15:00:00", "status": "approved", "auth_code": "1234567890"})
     resp = client.post("/monitor/transaction", content=raw, headers={"content-type": "application/json"})
     assert resp.status_code == 422
 
 
 def test_malformed_content_length_fails_safely():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     resp = client.post(
         "/monitor",
         content=json.dumps(_payload("2025-07-12 15:00:00")),
@@ -250,7 +278,7 @@ def test_malformed_content_length_fails_safely():
 
 
 def test_metrics_shape():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     resp = client.get("/metrics")
     assert resp.status_code == 200
     rows = resp.json()["rows"]
@@ -261,7 +289,7 @@ def test_metrics_shape():
 
 
 def test_metrics_recent_defaults_to_last_five_days_from_latest():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     resp = client.get("/metrics/recent")
     assert resp.status_code == 200
     rows = resp.json()["rows"]
@@ -275,7 +303,7 @@ def test_metrics_recent_defaults_to_last_five_days_from_latest():
 
 
 def test_metrics_recent_days_parameter_and_bounds():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     one_day = client.get("/metrics/recent?days=1")
     assert one_day.status_code == 200
     rows = one_day.json()["rows"]
@@ -289,7 +317,7 @@ def test_metrics_recent_days_parameter_and_bounds():
 
 
 def test_metrics_focus_hourly_aggregates_selected_cluster():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     response = client.get("/metrics/focus?bucket=hour")
     assert response.status_code == 200
     rows = response.json()["rows"]
@@ -300,7 +328,7 @@ def test_metrics_focus_hourly_aggregates_selected_cluster():
 
 
 def test_metrics_focus_minute_returns_selected_cluster_rows():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     response = client.get("/metrics/focus?bucket=minute")
     assert response.status_code == 200
     rows = response.json()["rows"]
@@ -310,12 +338,12 @@ def test_metrics_focus_minute_returns_selected_cluster_rows():
 
 
 def test_metrics_focus_invalid_bucket_returns_422():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     assert client.get("/metrics/focus?bucket=day").status_code == 422
 
 
 def test_decision_shape_local_mode():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     resp = client.get("/decision")
     assert resp.status_code == 200
     body = resp.json()
@@ -336,7 +364,7 @@ def test_decision_shape_local_mode():
 
 
 def test_decision_focus_matches_seeded_cluster_window():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     body = client.get("/decision/focus").json()
     assert body["forecast_points"]
     assert body["recent_evidence"][0]["timestamp"] == "2025-07-15T13:44:00"
@@ -344,7 +372,7 @@ def test_decision_focus_matches_seeded_cluster_window():
 
 def test_decision_forecast_focus_returns_relative_horizon_chart():
     cfg = _settings(decision_forecast_horizon_minutes=30, decision_forecast_step_minutes=5)
-    client = TestClient(create_app(cfg))
+    client = SyncASGIClient(create_app(cfg))
     body = client.get("/decision/forecast/focus").json()
     points = body["points"]
     assert len(points) == 6
@@ -362,14 +390,14 @@ def test_decision_forecast_focus_returns_relative_horizon_chart():
 
 
 def test_decision_forecast_focus_empty_when_history_is_insufficient():
-    client = TestClient(create_app(_settings(decision_min_history_points=999)))
+    client = SyncASGIClient(create_app(_settings(decision_min_history_points=999)))
     body = client.get("/decision/forecast/focus").json()
     assert body == {"points": []}
 
 
 def test_decision_mapping_watch_without_formal_alert():
     cfg = _settings(floor_rate_denied=0.2, warning_multiplier=10.0, critical_multiplier=20.0)
-    client = TestClient(create_app(cfg))
+    client = SyncASGIClient(create_app(cfg))
     monitor_resp = client.post(
         "/monitor",
         json=_payload("2025-07-16 00:01:00", approved=80, denied=17, failed=1, reversed=1, backend_reversed=1, refunded=0),
@@ -384,7 +412,7 @@ def test_decision_mapping_watch_without_formal_alert():
 
 
 def test_decision_mapping_act_now_for_alerting_window():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     client.post(
         "/monitor",
         json=_payload("2030-01-01 00:00:00", approved=100, denied=54, failed=1, reversed=1, backend_reversed=1, refunded=1),
@@ -395,7 +423,7 @@ def test_decision_mapping_act_now_for_alerting_window():
 
 
 def test_forecast_degrades_with_limited_history():
-    client = TestClient(create_app(_settings(decision_min_history_points=999)))
+    client = SyncASGIClient(create_app(_settings(decision_min_history_points=999)))
     body = client.get("/decision").json()
     assert body["forecast_points"] == []
     for item in body["priority_items"]:
@@ -403,7 +431,7 @@ def test_forecast_degrades_with_limited_history():
 
 
 def test_forecast_warning_when_min_history_is_test_mode_one():
-    client = TestClient(create_app(_settings(decision_min_history_points=1)))
+    client = SyncASGIClient(create_app(_settings(decision_min_history_points=1)))
     body = client.get("/decision").json()
     assert "for test/demo purposes only" in body["forecast_explanation"]
     assert "recommended setting is 5" in body["forecast_explanation"]
@@ -411,7 +439,7 @@ def test_forecast_warning_when_min_history_is_test_mode_one():
 
 def test_external_mode_unconfigured_falls_back_safely():
     cfg = _settings(decision_engine_mode="external")
-    client = TestClient(create_app(cfg))
+    client = SyncASGIClient(create_app(cfg))
     body = client.get("/decision").json()
     provider = body["provider_status"]
     assert provider["mode"] == "external"
@@ -432,7 +460,7 @@ def test_external_provider_failure_is_sanitized(monkeypatch):
         raise RuntimeError("provider failed with key sk-test-secret and raw payload dump")
 
     monkeypatch.setattr(app.state.runtime.decision_engine, "_call_external_provider", _boom)
-    client = TestClient(app)
+    client = SyncASGIClient(app)
     body = client.get("/decision").json()
     provider = body["provider_status"]
     assert provider["fallback_active"] is True
@@ -441,7 +469,7 @@ def test_external_provider_failure_is_sanitized(monkeypatch):
 
 
 def test_external_provider_success_rewrites_narrative_only(monkeypatch):
-    local_client = TestClient(create_app(_settings(decision_engine_mode="local")))
+    local_client = SyncASGIClient(create_app(_settings(decision_engine_mode="local")))
     local_decision = local_client.get("/decision").json()
 
     cfg = _settings(
@@ -463,7 +491,7 @@ def test_external_provider_success_rewrites_narrative_only(monkeypatch):
         )
 
     monkeypatch.setattr(app.state.runtime.decision_engine, "_call_external_provider", _ok)
-    external_client = TestClient(app)
+    external_client = SyncASGIClient(app)
     external_decision = external_client.get("/decision").json()
 
     assert external_decision["summary"] == "External summary rewrite for operators."
@@ -501,7 +529,7 @@ def test_openai_compatible_base_url_accepts_full_chat_completions_path():
 
 
 def test_decision_business_impact_fields_and_projection_clamp():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     decision = client.get("/decision").json()
     impact = decision["business_impact"]
     assert impact["top_metric"] in {"denied", "failed", "reversed"}
@@ -524,7 +552,7 @@ def test_decision_business_impact_fields_and_projection_clamp():
 
 def test_decision_explains_elevated_but_not_alerting_window():
     cfg = _settings(floor_rate_denied=0.2, warning_multiplier=10.0, critical_multiplier=20.0)
-    client = TestClient(create_app(cfg))
+    client = SyncASGIClient(create_app(cfg))
     client.post(
         "/monitor",
         json=_payload("2025-07-16 00:01:00", approved=80, denied=17, failed=1, reversed=1, backend_reversed=1, refunded=0),
@@ -536,7 +564,7 @@ def test_decision_explains_elevated_but_not_alerting_window():
 
 
 def test_logging_safety_and_no_raw_payload():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     payload = _payload(
         "2025-07-12 17:18:00",
         approved=100,
@@ -554,7 +582,7 @@ def test_logging_safety_and_no_raw_payload():
 
 
 def test_team_notification_status_disabled_by_default():
-    client = TestClient(
+    client = SyncASGIClient(
         create_app(
             _settings(
                 minimum_total_count=1,
@@ -593,7 +621,7 @@ def test_team_notification_webhook_success(monkeypatch):
         return httpx.Response(200, request=httpx.Request("POST", url))
 
     monkeypatch.setattr("app.notifier.httpx.post", _ok)
-    client = TestClient(create_app(cfg))
+    client = SyncASGIClient(create_app(cfg))
     response = client.post(
         "/monitor",
         json=_payload("2025-07-12 17:18:00", approved=1, denied=1, failed=0, reversed=0, backend_reversed=0, refunded=0, auth_code_counts={"51": 1}),
@@ -620,7 +648,7 @@ def test_team_notification_webhook_failure(monkeypatch):
         raise httpx.ConnectError("connect failed", request=httpx.Request("POST", url))
 
     monkeypatch.setattr("app.notifier.httpx.post", _boom)
-    client = TestClient(create_app(cfg))
+    client = SyncASGIClient(create_app(cfg))
     response = client.post("/monitor", json=_payload("2025-07-12 17:18:00", approved=1, denied=1, failed=0, reversed=0, backend_reversed=0, refunded=0))
     body = response.json()
     assert body["team_notification_status"] == "failed"
@@ -644,7 +672,7 @@ def test_team_notification_webhook_timeout(monkeypatch):
         raise httpx.ReadTimeout("timed out", request=httpx.Request("POST", url))
 
     monkeypatch.setattr("app.notifier.httpx.post", _timeout)
-    client = TestClient(create_app(cfg))
+    client = SyncASGIClient(create_app(cfg))
     response = client.post("/monitor", json=_payload("2025-07-12 17:18:00", approved=1, denied=1, failed=0, reversed=0, backend_reversed=0, refunded=0))
     body = response.json()
     assert body["team_notification_status"] == "failed"
@@ -655,7 +683,7 @@ def test_team_notification_webhook_timeout(monkeypatch):
 
 
 def test_auth_code_fallback_from_dataset():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     payload = _payload(
         "2025-07-12 17:18:00",
         approved=100,
@@ -685,7 +713,7 @@ def test_transaction_event_endpoint_aggregates_minute_bucket():
         critical_multiplier=2.0,
     )
     app = create_app(cfg)
-    client = TestClient(app)
+    client = SyncASGIClient(app)
 
     first = client.post("/monitor/transaction", json={"timestamp": "2025-07-16 00:00:12", "status": "approved"})
     second = client.post("/monitor/transaction", json={"timestamp": "2025-07-16 00:00:35", "status": "denied", "auth_code": "51"})
@@ -700,7 +728,7 @@ def test_transaction_event_endpoint_aggregates_minute_bucket():
 
 
 def test_transaction_event_endpoint_enforces_auth_code_length():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     response = client.post(
         "/monitor/transaction",
         json={"timestamp": "2025-07-16 00:00:35", "status": "denied", "auth_code": "12345678901234567"},
@@ -709,7 +737,7 @@ def test_transaction_event_endpoint_enforces_auth_code_length():
 
 
 def test_transaction_event_endpoint_rejects_unsupported_status():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     response = client.post(
         "/monitor/transaction",
         json={"timestamp": "2025-07-16 00:00:35", "status": "not-a-valid-status"},
@@ -718,7 +746,7 @@ def test_transaction_event_endpoint_rejects_unsupported_status():
 
 
 def test_auth_code_display_fields_format_known_and_unknown_codes():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     client.post(
         "/monitor",
         json=_payload(
@@ -746,7 +774,7 @@ def test_auth_code_display_fields_format_known_and_unknown_codes():
 
 
 def test_metrics_realtime_upsert_after_monitor():
-    client = TestClient(create_app(_settings()))
+    client = SyncASGIClient(create_app(_settings()))
     before = client.get("/metrics").json()["rows"]
     ts = "2025-07-16 00:00:00"
     client.post(
@@ -761,7 +789,7 @@ def test_metrics_realtime_upsert_after_monitor():
 
 def test_dashboard_render_ignores_singleton_newer_point_until_cluster_is_eligible():
     app = create_app(_settings())
-    client = TestClient(app)
+    client = SyncASGIClient(app)
     dashboard_before = json.loads(Path("grafana/dashboard.json").read_text(encoding="utf-8"))
     assert dashboard_before["time"] == {"from": "2025-07-12T13:45:00Z", "to": "2025-07-15T14:14:00Z"}
 
@@ -775,7 +803,7 @@ def test_dashboard_render_ignores_singleton_newer_point_until_cluster_is_eligibl
 
 def test_dashboard_render_moves_to_newer_eligible_cluster():
     app = create_app(_settings())
-    client = TestClient(app)
+    client = SyncASGIClient(app)
     for idx in range(5):
         minute = f"2026-04-23 12:0{idx}:00"
         response = client.post(
@@ -942,12 +970,131 @@ def test_checkout_report_acceptance_markers():
     report = Path("report/technical_report.md").read_text(encoding="utf-8")
     assert "08h" in report
     assert "09h" in report
-    assert any(marker in report for marker in ["10h", "12h", "15h", "17h"])
-    assert "How This Repository Satisfies The Challenge Requirements" in report
-    assert "Required monitoring endpoint:" in report
-    assert "Required query and real-time graphic:" in report
-    assert "Required anomaly model:" in report
-    assert "Required automatic reporting:" in report
+    assert "15h" in report
+    assert "16h" in report
+    assert "17h" in report
+    assert "checkout_2.csv` should be investigated first" in report
+    assert "Investigation method" in report
+    assert "sql/checkout_1_anomaly.sql" in report
+    assert "charts/checkout_2.svg" in report
+    assert "does not prove the checkout root cause" in report
+    assert "The ranking rule is explicit" in report
+    assert "multi-hour zero-gap drops outrank a checkout that is simply above expected across the day" in report
+
+
+def test_checkout_presentation_frames_first_challenge_as_investigation():
+    presentation = Path("report/presentation.md").read_text(encoding="utf-8")
+    assert "Challenge 3.1: Checkout Investigation" in presentation
+    assert "which checkout should be investigated first" in presentation
+    assert "`checkout_2` should be investigated first." in presentation
+    assert "This prioritization does not prove root cause." in presentation
+    assert "Challenge 3.2: Runtime Monitoring And Alerting" in presentation
+
+
+def test_interview_defense_artifact_contract():
+    gitignore = Path(".gitignore").read_text(encoding="utf-8")
+    assert "interview_defense.md" in gitignore
+    path = Path("interview_defense.md")
+    if not path.exists():
+        return
+    defense = path.read_text(encoding="utf-8")
+    assert "# Interview Defense Cheat Sheet" in defense
+    assert "show a reviewer-friendly solution for both challenge tracks" in defense
+    assert "## Evidence Behind The First-Challenge Conclusion" in defense
+    assert "## Monitoring Design Rationale" in defense
+
+
+def test_checkout_docs_explain_evidence_review_scope():
+    readme = Path("README.md").read_text(encoding="utf-8")
+    methodology = Path("docs/monitoring-methodology.md").read_text(encoding="utf-8")
+    assert "challenge 3.1: investigate checkout behavior" in readme
+    assert "first challenge investigation narrative" in readme
+    assert "deterministic baseline-aware rules instead of a trained ML detector" in readme
+    assert "What `transactions_auth_codes.csv` adds:" in readme
+    assert "do not by themselves prove the challenge 3.1 checkout conclusion" in readme
+    assert "Reviewer-facing conclusions should be verified against the source CSVs" in methodology
+
+
+def test_checkout_analysis_enriches_anomaly_csv_contract(tmp_path):
+    from scripts.checkout_analysis import analyze_checkout
+
+    output_path = tmp_path / "checkout_1_anomaly.csv"
+    analyze_checkout(Path("database/checkout_1.csv"), output_path)
+
+    with output_path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+
+    assert rows
+    assert {
+        "baseline",
+        "absolute_deviation",
+        "relative_deviation",
+        "is_material",
+        "direction",
+        "zero_gap",
+        "severity_score",
+    }.issubset(rows[0].keys())
+
+    row_08h = next(row for row in rows if row["time"] == "08h")
+    row_09h = next(row for row in rows if row["time"] == "09h")
+    assert row_08h["is_material"] == "true"
+    assert row_08h["direction"] == "drop"
+    assert row_08h["zero_gap"] == "true"
+    assert float(row_08h["severity_score"]) > 0
+    assert row_09h["direction"] == "drop"
+    assert row_09h["zero_gap"] == "false"
+
+
+def test_checkout_chart_generator_uses_anomaly_csv_and_emits_investigation_markers(tmp_path):
+    from scripts.checkout_analysis import analyze_checkout
+    from scripts.generate_checkout_charts import generate_chart
+
+    checkout_1_anomaly = tmp_path / "checkout_1_anomaly.csv"
+    checkout_2_anomaly = tmp_path / "checkout_2_anomaly.csv"
+    checkout_1_svg = tmp_path / "checkout_1.svg"
+    checkout_2_svg = tmp_path / "checkout_2.svg"
+
+    analyze_checkout(Path("database/checkout_1.csv"), checkout_1_anomaly)
+    analyze_checkout(Path("database/checkout_2.csv"), checkout_2_anomaly)
+    generate_chart(checkout_1_anomaly, checkout_1_svg, "Checkout 1 Investigation Summary")
+    generate_chart(checkout_2_anomaly, checkout_2_svg, "Checkout 2 Investigation Summary")
+
+    checkout_1_text = checkout_1_svg.read_text(encoding="utf-8")
+    checkout_2_text = checkout_2_svg.read_text(encoding="utf-8")
+
+    assert "Today" in checkout_1_text
+    assert "Expected" in checkout_1_text
+    assert "WATCH" in checkout_1_text
+    assert "Investigate first" in checkout_1_text
+    assert "does this checkout deserve investigation before the others?" in checkout_1_text
+    assert "Evidence review prioritizes suspicious windows." in checkout_1_text
+    assert "Yesterday" not in checkout_1_text
+    assert "Avg Last Week" not in checkout_1_text
+    assert "Avg Last Month" not in checkout_1_text
+    assert "08h-09h zero-gap drop" not in checkout_1_text
+    assert "08h-09h drop" in checkout_1_text
+    assert "zero-gap at 08h" in checkout_1_text
+
+    assert "Today" in checkout_2_text
+    assert "Expected" in checkout_2_text
+    assert "INVESTIGATE NOW" in checkout_2_text
+    assert "Investigate first" in checkout_2_text
+    assert "does this checkout deserve investigation before the others?" in checkout_2_text
+    assert "Evidence review prioritizes suspicious windows." in checkout_2_text
+    assert "15h-17h zero-gap drop" in checkout_2_text
+
+    checkout_1_first_card = re.search(
+        r'<rect x="860\.00" y="([0-9.]+)" width="320\.00" height="[0-9.]+" rx="14" fill="#ffffff" stroke="#d7d0c5" /><circle cx="882\.00" cy="[0-9.]+" r="12" fill="#b42318"',
+        checkout_1_text,
+    )
+    checkout_2_first_card = re.search(
+        r'<rect x="860\.00" y="([0-9.]+)" width="320\.00" height="[0-9.]+" rx="14" fill="#ffffff" stroke="#d7d0c5" /><circle cx="882\.00" cy="[0-9.]+" r="12" fill="#b42318"',
+        checkout_2_text,
+    )
+    assert checkout_1_first_card is not None
+    assert checkout_2_first_card is not None
+    assert float(checkout_1_first_card.group(1)) > 340
+    assert float(checkout_2_first_card.group(1)) > 340
 
 
 def test_api_entrypoint_bootstrap_fail_fast_contract():
