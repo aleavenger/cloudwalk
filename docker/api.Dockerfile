@@ -19,7 +19,8 @@ COPY pyproject.toml /app/pyproject.toml
 RUN mkdir -p /app/database/report /app/charts /app/logs
 
 COPY docker/api-entrypoint.sh /usr/local/bin/api-entrypoint.sh
-RUN chmod +x /usr/local/bin/api-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/api-entrypoint.sh \
+    && chmod +x /usr/local/bin/api-entrypoint.sh
 
 EXPOSE 8000
 

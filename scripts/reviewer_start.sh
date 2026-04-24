@@ -97,8 +97,75 @@ validate_env_file() {
   fi
 }
 
+read_env_value() {
+  local key="$1"
+  local default_value="$2"
+  local raw_value
+  raw_value="$(
+    awk -v key="${key}" '
+      index($0, key "=") == 1 {
+        print substr($0, length(key) + 2)
+        exit
+      }
+    ' "${ENV_FILE}"
+  )"
+  raw_value="${raw_value//$'\r'/}"
+  if [[ -z "${raw_value}" ]]; then
+    printf '%s' "${default_value}"
+    return
+  fi
+  if [[ "${raw_value}" == \"*\" && "${raw_value}" == *\" ]]; then
+    raw_value="${raw_value:1:${#raw_value}-2}"
+  elif [[ "${raw_value}" == \'*\' && "${raw_value}" == *\' ]]; then
+    raw_value="${raw_value:1:${#raw_value}-2}"
+  fi
+  printf '%s' "${raw_value}"
+}
+
+is_port_available() {
+  local port="$1"
+  python - "$port" <<'PY'
+import socket
+import sys
+
+port = int(sys.argv[1])
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+    s.bind(("127.0.0.1", port))
+except OSError:
+    sys.exit(1)
+finally:
+    s.close()
+PY
+}
+
+pick_port() {
+  local label="$1"
+  local default_port="$2"
+  local key="$3"
+  local chosen_port="${default_port}"
+  local max_tries=100
+  local try_count=0
+
+  while ! is_port_available "${chosen_port}"; do
+    chosen_port="$((chosen_port + 1))"
+    try_count="$((try_count + 1))"
+    if (( try_count >= max_tries )); then
+      echo "Could not find an available port for ${label} after ${max_tries} attempts starting from ${default_port}." >&2
+      exit 1
+    fi
+  done
+
+  write_env "${key}" "${chosen_port}"
+  if [[ "${chosen_port}" != "${default_port}" ]]; then
+    echo "[bootstrap] ${label} port ${default_port} is busy; using ${chosen_port}."
+  fi
+}
+
 echo "CloudWalk reviewer bootstrap"
 echo "This script prepares local config, starts containers, runs smoke checks, and prints first-login details."
+echo "External AI is available as optional narrative polish. Local deterministic mode remains authoritative and fully valid for reviewer evaluation."
 
 decision_mode="$(prompt_default "Decision mode (local/external)" "external")"
 decision_mode="${decision_mode,,}"
@@ -124,7 +191,7 @@ if [[ "${decision_mode}" == "external" ]]; then
   api_key="$(prompt_hidden "API key for ${provider}")"
   if [[ -z "${api_key}" ]]; then
     echo "No external API key provided. Falling back to local deterministic mode."
-    echo "Local mode remains fully functional for monitoring decisions, with less narrative polish than external mode."
+    echo "Local mode remains fully functional and authoritative for reviewer evaluation; external AI is optional narrative polish."
     decision_mode="local"
     provider_label="local"
     write_env "DECISION_ENGINE_MODE" "local"
@@ -149,38 +216,66 @@ if [[ "${use_demo}" == "false" ]]; then
   write_env "MONITORING_API_KEY" "${monitor_api_key:-${DEMO_API_KEY}}"
 fi
 
+team_webhook_url="$(prompt_hidden "Team notification webhook URL (blank for local mock receiver)")"
+if [[ -z "${team_webhook_url}" ]]; then
+  write_env "TEAM_NOTIFICATION_WEBHOOK_URL" ""
+  team_notification_target_label="http://team-receiver:8010/notify"
+else
+  write_env "TEAM_NOTIFICATION_WEBHOOK_URL" "${team_webhook_url}"
+  team_notification_target_label="configured in ${ENV_FILE} (TEAM_NOTIFICATION_WEBHOOK_URL)"
+fi
+
 anon_enabled="$(prompt_yes_no "Enable anonymous Grafana viewer mode" "y")"
 write_env "GRAFANA_ANONYMOUS_ENABLED" "${anon_enabled}"
+
 validate_env_file "${ENV_FILE}"
+
+echo "[bootstrap] Cleaning up existing CloudWalk stack (if any)"
+docker compose --env-file "${ENV_FILE}" down --remove-orphans >/dev/null 2>&1 || true
+
+# Pick host ports dynamically when defaults are already in use to avoid startup failures.
+pick_port "API" 8000 "API_PORT"
+pick_port "Grafana" 3000 "GRAFANA_PORT"
+pick_port "Team receiver" 8010 "TEAM_RECEIVER_PORT"
 
 echo "[bootstrap] Starting stack"
 docker compose --env-file "${ENV_FILE}" up --build -d
 
 echo "[bootstrap] Running smoke checks"
-set -a
-. "${ENV_FILE}"
-set +a
+api_port_value="$(read_env_value "API_PORT" "8000")"
+grafana_port_value="$(read_env_value "GRAFANA_PORT" "3000")"
+team_receiver_port_value="$(read_env_value "TEAM_RECEIVER_PORT" "8010")"
+monitoring_api_key_value="$(read_env_value "MONITORING_API_KEY" "${DEMO_API_KEY}")"
+decision_mode_value="$(read_env_value "DECISION_ENGINE_MODE" "local")"
+anon_enabled_value="$(read_env_value "GRAFANA_ANONYMOUS_ENABLED" "true")"
+
+MONITORING_API_KEY="${monitoring_api_key_value}" \
+API_PORT="${api_port_value}" \
+GRAFANA_PORT="${grafana_port_value}" \
+TEAM_RECEIVER_PORT="${team_receiver_port_value}" \
 "${ROOT_DIR}/scripts/smoke_one_click.sh"
 
 printf '\nEnvironment ready.\n'
-printf 'Grafana URL: http://127.0.0.1:%s\n' "${GRAFANA_PORT:-3000}"
-printf 'API URL: http://127.0.0.1:%s\n' "${API_PORT:-8000}"
-printf 'Local team notification receiver: http://127.0.0.1:%s\n' "${TEAM_RECEIVER_PORT:-8010}"
+printf 'Grafana URL: http://127.0.0.1:%s\n' "${grafana_port_value}"
+printf 'API URL: http://127.0.0.1:%s\n' "${api_port_value}"
+printf 'Local team notification receiver: http://127.0.0.1:%s\n' "${team_receiver_port_value}"
 printf 'Grafana user: %s\n' "${GRAFANA_ADMIN_USER:-admin}"
 printf 'Grafana password: %s\n' "${GRAFANA_ADMIN_PASSWORD:-admin}"
-if [[ "${MONITORING_API_KEY:-${DEMO_API_KEY}}" == "${DEMO_API_KEY}" ]]; then
+if [[ "${monitoring_api_key_value}" == "${DEMO_API_KEY}" ]]; then
   printf 'Monitoring API key: %s\n' "${DEMO_API_KEY}"
 else
   printf 'Monitoring API key: configured in %s (MONITORING_API_KEY)\n' "${ENV_FILE}"
 fi
-printf 'Decision mode: %s\n' "${DECISION_ENGINE_MODE:-local}"
+printf 'Decision mode: %s\n' "${decision_mode_value}"
 printf 'Provider selection: %s\n' "${provider_label}"
-if [[ "${DECISION_ENGINE_MODE:-local}" == "local" ]]; then
-  printf 'Narrative mode: local deterministic explanations (monitoring fully functional; external narrative polish disabled).\n'
+if [[ "${decision_mode_value}" == "local" ]]; then
+  printf 'Narrative mode: local deterministic explanations (authoritative for reviewer evaluation; external narrative polish disabled).\n'
 else
-  printf 'Narrative mode: external AI rewrite enabled for richer reviewer-facing explanations.\n'
+  printf 'Narrative mode: external AI rewrite enabled as optional reviewer-facing narrative polish; local logic remains authoritative.\n'
 fi
-printf 'Anonymous Grafana viewer mode: %s\n' "${GRAFANA_ANONYMOUS_ENABLED:-true}"
-printf 'Team notification target: %s\n' "${TEAM_NOTIFICATION_WEBHOOK_URL:-http://team-receiver:8010/notify}"
+printf 'Dashboard refresh: fixed at 30 minutes.\n'
+printf 'External AI note: when external mode is enabled, page loads and refresh cycles can trigger repeated AI-backed narrative requests because multiple panels query /decision/focus.\n'
+printf 'Anonymous Grafana viewer mode: %s\n' "${anon_enabled_value}"
+printf 'Team notification target: %s\n' "${team_notification_target_label}"
 printf 'Local reviewer env file: %s\n' "${ENV_FILE}"
 printf 'Stop command: docker compose --env-file %s down\n' "${ENV_FILE}"

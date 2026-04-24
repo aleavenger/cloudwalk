@@ -4,7 +4,7 @@
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 7,
-  "refresh": "auto",
+  "refresh": "30m",
   "time": {
     "from": "now-5d",
     "to": "now"
@@ -13,7 +13,7 @@
     {
       "id": 1,
       "type": "table",
-      "title": "What Needs Attention Right Now",
+      "title": "Reviewer Brief: What Needs Attention Right Now",
       "gridPos": {
         "h": 6,
         "w": 24,
@@ -775,7 +775,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "### First login notes\\n- Grafana defaults: `admin` / `admin` (local demo).\\n- Monitoring API key is required for `/metrics`, `/alerts`, and `/decision`.\\n- Reviewer bootstrap prefers `external` mode for richer narrative explanations.\\n- Local mode remains deterministic and fully functional for monitoring behavior.\\n- `watch` is predictive guidance, while formal alerts come from `/monitor` threshold breaches."
+        "content": "### First login notes\\n- Grafana defaults: `admin` / `admin` (local demo).\\n- Monitoring API key is required for `/metrics`, `/alerts`, and `/decision`.\\n- Dashboard refresh is fixed at `30m`.\\n- `external` mode is optional narrative polish; `local` mode remains authoritative for ranking, risk, forecast, and business impact.\\n- In `external` mode, page loads and each refresh cycle can trigger repeated AI-backed narrative requests because multiple panels query `/decision/focus`.\\n- `watch` is predictive guidance, while formal alerts come from `/monitor` threshold breaches."
       }
     }
   ],

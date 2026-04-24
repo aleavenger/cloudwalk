@@ -49,6 +49,7 @@ Primary reviewer entrypoint:
 ```
 
 This one-step bootstrap regenerates the checkout anomaly CSV/SVG artifacts, starts API + Grafana + mock team receiver, and runs smoke checks before printing first-login details.
+It also keeps optional external AI visible for narrative polish, while local deterministic mode remains fully valid for reviewer evaluation.
 Manual compose/local paths remain fallback options in `README.md` and are not the primary reviewer flow.
 
 ---
@@ -242,6 +243,9 @@ Interpretation:
 - it remains below formal warning threshold
 - no immediate action is required at the latest dashboard focus point
 
+The top dashboard panel functions as a reviewer brief.
+Optional external AI can polish that wording, but it does not change the underlying ranking, forecast, or business-impact logic.
+
 ---
 
 # Operational Controls
@@ -254,6 +258,8 @@ The implementation protects the reviewer runtime with:
 - count and auth-code validation
 - aggregate-only alert metadata
 - webhook delivery status reported separately from alert detection
+- dashboard refresh fixed at `30m`, so repeated external narrative calls are explicit rather than hidden
+- optional external AI remains readability polish only; page loads and refresh cycles can trigger repeated narrative requests because multiple panels query `/decision/focus`
 
 Runtime log files under `logs/` are operational artifacts. They are useful for local checks, but not the source of truth for the case findings.
 

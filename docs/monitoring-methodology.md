@@ -176,12 +176,14 @@ Computation:
 - `GET /decision/focus` returns the same decision schema as `/decision`, scoped to the selected focus cluster so forecast/evidence align with the dashboard time window.
 - `GET /decision/forecast/focus` reshapes the focused forecast into relative-horizon rows with `minutes_ahead`, `horizon_label`, per-metric forecast rates, and `max_rate` for panel-friendly visualization.
 - Grafana renders `dashboard.json` from `dashboard.template.json` using the selected cluster start and an end time extended through the forecast horizon.
+- The provisioned dashboard refresh is fixed at `30m` so repeated external narrative calls are explicit and bounded for reviewer demos.
+- When `external` mode is enabled, page loads and refresh cycles can trigger repeated AI-backed narrative requests because multiple panels query `/decision/focus`.
 - The `What Could Get Worse In The Forecast Window` panel intentionally does not use the dashboard-wide absolute time axis; it renders the same focused forecast against adaptive relative horizon labels such as `+5m`, `+10m`, and `+15m`.
 - `GET /metrics/recent?days=N` remains available as a compatibility endpoint for latest-anchored slicing outside the dashboard flow.
 
 ### Optional External Narrative Mode
 
-Environment/config default mode is local. External mode is optional and controlled by environment. The reviewer bootstrap flow is different: `./scripts/reviewer_start.sh` prompts with `external` selected by default for reviewer-facing narrative polish and falls back to local mode when no external key is provided.
+Environment/config default mode is local. External mode is optional and controlled by environment. The reviewer bootstrap flow is different: `./scripts/reviewer_start.sh` keeps `external` selected by default so the optional AI alternative is visible to reviewers, but local mode remains authoritative and fully sufficient when no external key is provided.
 In that interactive bootstrap flow, OpenAI defaults to `gpt-4.1-mini` unless a different model is entered. In raw compose mode without an explicit model, the container env default remains `gpt-4o-mini`.
 
 Supported providers:
@@ -192,7 +194,8 @@ Supported providers:
 
 Safety contract:
 - external provider can rewrite only `summary`, `top_recommendation`, `problem_explanation`, and `forecast_explanation`
-- local logic remains authoritative for status/ranking/severity/risk
+- local logic remains authoritative for status, ranking, threshold boundaries, severity, risk, forecast, and business-impact numerics
+- external narrative can improve readability, but it is not necessary for reviewer evaluation or correctness
 - failure, timeout, or invalid external output falls back to local guidance
 - surfaced provider status is sanitized and excludes API keys/raw payloads
 
@@ -260,6 +263,7 @@ From `database/*.csv`, the repository produces and exposes:
 - Conclusions are bounded by the provided datasets and windows.
 - Local demo credentials and localhost-only exposure are part of the reviewer workflow, not production guidance.
 - Forecast guidance is heuristic and intended for short-horizon operator prioritization, not long-term prediction.
+- External narrative mode can incur repeated AI-backed requests during dashboard page loads and `30m` refresh cycles because multiple panels query `/decision/focus`.
 
 ## When to Update This File
 

@@ -41,10 +41,11 @@ def _assert_percent_override(panel: dict, field_name: str) -> None:
 def main() -> None:
     create_app()
     dashboard = json.loads(Path("grafana/dashboard.json").read_text(encoding="utf-8"))
+    assert dashboard.get("refresh") == "30m"
     assert dashboard.get("time") == {"from": "2025-07-12T13:45:00Z", "to": "2025-07-15T14:14:00Z"}
 
     panel_titles = {panel.get("title") for panel in dashboard.get("panels", [])}
-    assert "What Needs Attention Right Now" in panel_titles
+    assert "Reviewer Brief: What Needs Attention Right Now" in panel_titles
     assert "Why Each Metric Is Ranked This Way" in panel_titles
     assert "What Could Get Worse In The Forecast Window" in panel_titles
     assert "Evidence Behind The Current Recommendation" in panel_titles
@@ -159,6 +160,12 @@ def main() -> None:
     panel9_full = next(p for p in dashboard.get("panels", []) if p.get("id") == 9)
     _assert_percent_override(panel9_full, "Above baseline now (percentage points)")
     _assert_percent_override(panel9_full, "Gap before formal warning (percentage points remaining)")
+
+    panel8_full = next(p for p in dashboard.get("panels", []) if p.get("id") == 8)
+    panel8_content = panel8_full.get("options", {}).get("content", "")
+    assert "Dashboard refresh is fixed at `30m`." in panel8_content
+    assert "`external` mode is optional narrative polish;" in panel8_content
+    assert "page loads and each refresh cycle can trigger repeated AI-backed narrative requests" in panel8_content
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ async function run() {
   const outputDir = process.env.PLAYWRIGHT_OUTPUT_DIR || "logs/playwright";
   const screenshotPath = path.join(outputDir, "grafana-dashboard-playwright-check.png");
   const requiredTitles = [
-    "What Needs Attention Right Now",
+    "Reviewer Brief: What Needs Attention Right Now",
     "Why Each Metric Is Ranked This Way",
     "What Could Get Worse In The Forecast Window",
     "Evidence Behind The Current Recommendation",

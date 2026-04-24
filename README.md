@@ -33,12 +33,15 @@ Services:
 - API: `http://127.0.0.1:8000`
 - Grafana: `http://127.0.0.1:3000`
 - Mock team receiver: `http://127.0.0.1:8010`
+- Team notification viewer (captured deliveries): `http://127.0.0.1:8010/notifications`
+- Team receiver health check: `http://127.0.0.1:8010/health`
 
 Bootstrap behavior:
 - recreates `.env.reviewer` from `.env.example` on each run and sets owner-only permissions (`chmod 600`)
-- prompts for decision mode (`local` or `external`), defaulting to `external` for reviewer narrative polish
+- prompts for decision mode (`local` or `external`), keeping `external` visible as optional narrative polish while local remains authoritative for reviewer evaluation
 - if `external` is selected: prompts provider (`openai`, `anthropic`, `google`), model, and API key
 - falls back to deterministic `local` mode when external key is not provided
+- provisions the reviewer dashboard with a fixed `30m` refresh; in `external` mode, page loads and refresh cycles can trigger repeated AI-backed narrative requests because multiple panels query `/decision/focus`
 - starts API + Grafana + mock team receiver with `docker compose --env-file .env.reviewer up --build -d`
 - runs `./scripts/smoke_one_click.sh`
 - prints first-login details and safe stop command
@@ -148,14 +151,16 @@ What bootstrap and smoke validation proves:
 
 Decision guidance modes:
 - Environment/config default: `DECISION_ENGINE_MODE=local` for deterministic local scoring, ranking, and forecast.
-- Reviewer bootstrap default: `./scripts/reviewer_start.sh` prompts with `external` selected by default for richer reviewer-facing narrative polish, then falls back to `local` if no external key is provided.
+- Reviewer bootstrap default: `./scripts/reviewer_start.sh` still prompts with `external` selected so the optional AI alternative is visible to reviewers, then falls back to `local` if no external key is provided.
 - `DECISION_ENGINE_MODE=external`: local scoring remains authoritative; external provider may rewrite only `summary`, `top_recommendation`, `problem_explanation`, and `forecast_explanation`.
+- External narrative mode can improve readability, but it is not required for reviewer evaluation or challenge coverage.
 - Supported external providers: `openai`, `anthropic`, `google`.
 - In interactive reviewer bootstrap mode, OpenAI external prompt defaults to `gpt-4.1-mini` unless you choose another model.
 - In raw compose mode without bootstrap-selected model, defaults are `EXTERNAL_AI_PROVIDER=openai` and `EXTERNAL_AI_MODEL=gpt-4o-mini` when those variables are not set.
 - Default `DECISION_MIN_HISTORY_POINTS=1` is demo-oriented and `/decision` shows a forecast warning when this test value is used; production recommendation is `5`.
 - For `openai`, optional `EXTERNAL_AI_BASE_URL` enables OpenAI-compatible endpoints (for example `https://openrouter.ai/api/v1`); leave it empty to use official OpenAI.
 - External failures safely fall back to local output and expose sanitized provider status in `/decision`.
+- When `external` mode is enabled, opening the dashboard or waiting for its `30m` refresh can trigger multiple AI-backed narrative requests per refresh cycle because several panels query `/decision/focus`.
 
 Business-impact fields in `/decision`:
 - top-level `business_impact` includes `top_metric`, `domain_label`, `likely_owner`, `above_normal_rate`, `warning_gap_rate`, `excess_transactions_now`, and `projected_excess_transactions_horizon`.
@@ -180,6 +185,8 @@ The provisioned dashboard is optimized for compose mode and expects the internal
 Datasource provisioning also allowlists `http://api:8000` for Infinity URL mode.
 The rendered dashboard time range is absolute and follows the newest eligible data cluster, extending through the forecast horizon when forecast data is available.
 The dashboard is organized in business reading order: current priority, business impact, forecast/evidence, trend context, formal alert history, then deeper metric-ranking detail.
+The provisioned dashboard refresh is fixed at `30m` so repeated external narrative calls are explicit and bounded.
+When `external` mode is enabled, page loads and refresh cycles can trigger multiple AI-backed narrative requests because several panels query `/decision/focus`.
 The "What Could Get Worse In The Forecast Window" panel is the exception: it uses a relative horizon axis so short-horizon forecast bars stay readable instead of being compressed by the dashboard-wide cluster window.
 Auth-code evidence is rendered as readable dashboard strings such as `51 Insufficient funds x6` while the API still keeps the structured top-code tuples for machine consumers.
 Decision/business-impact panels render confidence and rate values with percent-based human-readable units while API fields remain raw numeric values.

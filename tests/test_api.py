@@ -825,9 +825,10 @@ def test_api_key_guard_uses_constant_time_compare():
 def test_dashboard_contract_for_decision_first_panels():
     create_app(_settings())
     dashboard = json.loads(Path("grafana/dashboard.json").read_text(encoding="utf-8"))
+    assert dashboard.get("refresh") == "30m"
     assert dashboard.get("time") == {"from": "2025-07-12T13:45:00Z", "to": "2025-07-15T14:14:00Z"}
     titles = {panel.get("title") for panel in dashboard.get("panels", [])}
-    assert "What Needs Attention Right Now" in titles
+    assert "Reviewer Brief: What Needs Attention Right Now" in titles
     assert "Why Each Metric Is Ranked This Way" in titles
     assert "What Could Get Worse In The Forecast Window" in titles
     assert "Evidence Behind The Current Recommendation" in titles
@@ -926,6 +927,12 @@ def test_dashboard_contract_for_decision_first_panels():
     assert _has_percent_override(panel9_full, "Above baseline now (percentage points)")
     assert _has_percent_override(panel9_full, "Gap before formal warning (percentage points remaining)")
 
+    panel8 = _panel_by_id(dashboard, 8)
+    panel8_content = panel8.get("options", {}).get("content", "")
+    assert "Dashboard refresh is fixed at `30m`." in panel8_content
+    assert "`external` mode is optional narrative polish;" in panel8_content
+    assert "page loads and each refresh cycle can trigger repeated AI-backed narrative requests" in panel8_content
+
 
 def test_reviewer_bootstrap_contract_and_secret_handling():
     script = Path("scripts/reviewer_start.sh").read_text(encoding="utf-8")
@@ -934,9 +941,12 @@ def test_reviewer_bootstrap_contract_and_secret_handling():
     assert "Decision mode (local/external)" in script
     assert "\"Decision mode (local/external)\" \"external\"" in script
     assert "External provider (openai/anthropic/google)" in script
+    assert "External AI is available as optional narrative polish. Local deterministic mode remains authoritative and fully valid for reviewer evaluation." in script
     assert "No external API key provided. Falling back to local deterministic mode." in script
-    assert "Local mode remains fully functional for monitoring decisions" in script
+    assert "Local mode remains fully functional and authoritative for reviewer evaluation; external AI is optional narrative polish." in script
     assert "Monitoring API key: configured in %s (MONITORING_API_KEY)" in script
+    assert "Dashboard refresh: fixed at 30 minutes." in script
+    assert "External AI note: when external mode is enabled, page loads and refresh cycles can trigger repeated AI-backed narrative requests because multiple panels query /decision/focus." in script
     assert "Local team notification receiver:" in script
     assert "Team notification target:" in script
 
@@ -1007,12 +1017,20 @@ def test_interview_defense_artifact_contract():
 def test_checkout_docs_explain_evidence_review_scope():
     readme = Path("README.md").read_text(encoding="utf-8")
     methodology = Path("docs/monitoring-methodology.md").read_text(encoding="utf-8")
+    technical_report = Path("report/technical_report.md").read_text(encoding="utf-8")
+    system_map = Path("SYSTEM_MAP.md").read_text(encoding="utf-8")
     assert "challenge 3.1: investigate checkout behavior" in readme
     assert "first challenge investigation narrative" in readme
     assert "deterministic baseline-aware rules instead of a trained ML detector" in readme
     assert "What `transactions_auth_codes.csv` adds:" in readme
     assert "do not by themselves prove the challenge 3.1 checkout conclusion" in readme
+    assert "External narrative mode can improve readability, but it is not required for reviewer evaluation or challenge coverage." in readme
+    assert "multiple AI-backed narrative requests per refresh cycle because several panels query `/decision/focus`" in readme
     assert "Reviewer-facing conclusions should be verified against the source CSVs" in methodology
+    assert "external narrative can improve readability, but it is not necessary for reviewer evaluation or correctness" in methodology
+    assert "page loads and refresh cycles can trigger repeated AI-backed narrative requests" in methodology
+    assert "Optional runtime AI narrative can improve reviewer-facing readability, but it is not necessary to validate the challenge solution or its deterministic behavior." in technical_report
+    assert "Dashboard refresh is fixed at `30m` for reviewer clarity." in system_map
 
 
 def test_checkout_analysis_enriches_anomaly_csv_contract(tmp_path):

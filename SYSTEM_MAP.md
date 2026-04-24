@@ -7,7 +7,7 @@ Date: 2026-04-23
 - Validation: Pydantic models (`app/models.py`).
 - Data source: CSV datasets loaded at startup (`app/data_loader.py`).
 - Alert engine: baseline + threshold + cooldown evaluator (`app/anomaly.py`).
-- Decision engine: local deterministic prioritization + forecast with optional external narrative rewrite (`app/decision.py`).
+- Decision engine: local deterministic prioritization + forecast with optional external narrative rewrite for readability polish, not core decision authority (`app/decision.py`).
 - Notification sink: append-only JSON lines log plus optional webhook delivery (`app/notifier.py`).
 - Infra: Docker Compose with API + Grafana + mock team receiver (`docker-compose.yml`).
 
@@ -52,7 +52,7 @@ Date: 2026-04-23
 - `/decision/forecast/focus` exposes the focused forecast as relative-horizon chart rows for the Grafana forecast panel
 - auth-code evidence is stored as top-k tuples and also exposed as readable display strings for Grafana tables
 - decision response includes deterministic business-impact fields (`above_normal`, warning-gap, excess-transaction projections, owner/domain mapping) derived from local metrics
-- optional external provider path rewrites only narrative fields (`summary`, `top_recommendation`, `problem_explanation`, `forecast_explanation`) with sanitized fallback state on errors
+- optional external provider path rewrites only narrative fields (`summary`, `top_recommendation`, `problem_explanation`, `forecast_explanation`) with sanitized fallback state on errors; ranking, thresholds, risk, forecast, and business-impact numerics remain local
 - when `DECISION_MIN_HISTORY_POINTS=1`, forecast text includes an explicit test/demo warning that recommends `5` for stronger forecast reliability
 
 ## Public API Endpoints
@@ -76,7 +76,7 @@ From environment (`app/config.py`, `.env.example`, `docker-compose.yml`):
 - Baseline/noise control: `MINIMUM_TOTAL_COUNT`, `MINIMUM_METRIC_COUNT`, `BASELINE_WINDOW_MINUTES`, `COOLDOWN_MINUTES`
 - Threshold tuning: `FLOOR_RATE_DENIED`, `FLOOR_RATE_FAILED`, `FLOOR_RATE_REVERSED`, `WARNING_MULTIPLIER`, `CRITICAL_MULTIPLIER`
 - Decision runtime: `DECISION_ENGINE_MODE`, `DECISION_LOOKBACK_MINUTES`, `DECISION_FORECAST_HORIZON_MINUTES`, `DECISION_FORECAST_STEP_MINUTES`, `DECISION_MIN_HISTORY_POINTS`
-- Optional external narrative: `EXTERNAL_AI_PROVIDER`, `EXTERNAL_AI_MODEL`, `EXTERNAL_AI_API_KEY`, `EXTERNAL_AI_BASE_URL`, `EXTERNAL_AI_TIMEOUT_SECONDS` (interactive reviewer bootstrap defaults OpenAI model prompt to `gpt-4.1-mini`; raw compose defaults remain provider `openai`, model `gpt-4o-mini` when model env is unset; empty base URL uses official OpenAI)
+- Optional external narrative: `EXTERNAL_AI_PROVIDER`, `EXTERNAL_AI_MODEL`, `EXTERNAL_AI_API_KEY`, `EXTERNAL_AI_BASE_URL`, `EXTERNAL_AI_TIMEOUT_SECONDS` (interactive reviewer bootstrap keeps OpenAI visible as an optional narrative mode; raw compose defaults remain provider `openai`, model `gpt-4o-mini` when model env is unset; empty base URL uses official OpenAI)
 - Reviewer Grafana UX: `GRAFANA_ANONYMOUS_ENABLED`
 
 ## Data Flow and Persistence
@@ -97,7 +97,9 @@ From environment (`app/config.py`, `.env.example`, `docker-compose.yml`):
 ## Grafana Provisioning Notes
 - Datasource provisioning (`grafana/provisioning/datasources/cloudwalk.yaml`) sets custom `X-API-Key` header and explicit `allowedHosts` for API URLs used by Infinity URL-mode queries.
 - Dashboard provisioning renders `grafana/dashboard.json` from `grafana/dashboard.template.json` with an absolute focus window derived from the newest eligible data cluster.
+- Dashboard refresh is fixed at `30m` for reviewer clarity.
 - Trend/volume charts query `/metrics/focus?bucket=hour`, decision tables query `/decision/focus`, and the forecast panel queries `/decision/forecast/focus`.
+- When `DECISION_ENGINE_MODE=external`, page loads and refresh cycles can trigger repeated AI-backed narrative requests because multiple panels query `/decision/focus`.
 - Metric visualizations are provisioned with Infinity backend parser plus explicit typed columns; time-series panels use timestamp+number fields and the forecast panel uses a string horizon axis with numeric series for Grafana 11 rendering.
 - Decision and evidence tables consume backend-provided auth-code display fields rather than raw JSON arrays.
 - Dashboard layout is decision-first and business-ordered: current priority first, then business impact, then forecast/evidence, then trend/traffic context, then formal alert history, deeper metric-ranking detail, and first-login guidance.

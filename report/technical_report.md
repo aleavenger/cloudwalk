@@ -63,6 +63,7 @@ Primary reviewer startup path:
 
 - This repository was developed as AI-assisted, human-reviewed engineering rather than a fully manual implementation.
 - AI accelerated implementation, iteration, and documentation, but the final repository shape and runtime behavior were reviewed directly by a human before submission.
+- Optional runtime AI narrative can improve reviewer-facing readability, but it is not necessary to validate the challenge solution or its deterministic behavior.
 - Human verification checked the solution against the challenge datasets, SQL outputs, generated checkout charts, API contracts, automated tests, and end-to-end smoke validation.
 - Safety-sensitive choices such as authenticated endpoints, bounded payload validation, deterministic alert logic, and sanitized logging were kept explicit in the implementation instead of delegated to opaque model behavior.
 
@@ -94,7 +95,7 @@ Primary reviewer startup path:
 ### How The Decision Layer Explains Business Impact
 - `/decision` now includes `problem_explanation` and `forecast_explanation` to separate current issue interpretation from near-term forecast interpretation.
 - `/decision` also includes a `business_impact` object with top metric, likely owner/domain, above-normal delta, warning-gap distance, and excess affected transaction estimates.
-- Optional external provider mode can rewrite only narrative fields (`summary`, `top_recommendation`, `problem_explanation`, `forecast_explanation`); all ranking/risk/threshold/business-impact numerics remain locally authoritative.
+- Optional external provider mode can rewrite only narrative fields (`summary`, `top_recommendation`, `problem_explanation`, `forecast_explanation`) as readability polish; all ranking/risk/threshold/forecast/business-impact numerics remain locally authoritative.
 
 ## Challenge Coverage
 
@@ -137,3 +138,4 @@ Challenge 3.2 runtime implementation:
 - One-click reviewer mode provisions the Grafana plugin and a localhost mock team receiver automatically; manual local mode remains a fallback path and still requires a manual Grafana install path plus an optional webhook target if team delivery is tested outside compose.
 - Dataset is historical snapshot, so real-time behavior is replay-like for demonstration.
 - The checkout investigation flags suspicious windows for follow-up, but it does not establish business or system root cause by itself.
+- In `external` mode, dashboard page loads and the fixed `30m` refresh can trigger repeated AI-backed narrative requests because several panels read `/decision/focus`.
