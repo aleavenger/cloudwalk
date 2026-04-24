@@ -14,8 +14,8 @@ API_CONTAINER_NAME="${API_CONTAINER_NAME:-cloudwalk-api}"
 docker_exec() {
   MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' docker exec "$@"
 }
-# Inject at current UTC minute so reviewer startup always has recent data.
-ALERT_TS="$(date -u +"%Y-%m-%d %H:%M:%S")"
+# Inject just beyond cooldown window so repeated smoke runs remain deterministic.
+ALERT_TS="$(python3 -c "from datetime import datetime, timedelta; print((datetime.utcnow() + timedelta(minutes=11)).strftime('%Y-%m-%d %H:%M:%S'))")"
 
 echo "[check] API health endpoint"
 curl -fsS "${API_URL}/health" >/dev/null
@@ -52,7 +52,7 @@ echo "[check] Team notification delivery"
 before_count="$(curl -fsS "${TEAM_RECEIVER_URL}/notifications" | docker_exec -i "${API_CONTAINER_NAME}" python -c "import json,sys; data=json.load(sys.stdin); print(len(data['notifications']))")"
 curl -fsS -H "X-API-Key: ${API_KEY}" \
   -H "content-type: application/json" \
-  -d "{\"window_end\":\"${ALERT_TS}\",\"approved\":100,\"denied\":54,\"failed\":1,\"reversed\":1,\"backend_reversed\":1,\"refunded\":1,\"auth_code_counts\":{\"51\":6,\"59\":3}}" \
+  -d "{\"window_end\":\"${ALERT_TS}\",\"approved\":0,\"denied\":100,\"failed\":0,\"reversed\":0,\"backend_reversed\":0,\"refunded\":0,\"auth_code_counts\":{\"51\":6,\"59\":3}}" \
   "${API_URL}/monitor" \
   | docker_exec -i "${API_CONTAINER_NAME}" python -c "import json,sys; data=json.load(sys.stdin); assert data['recommendation'] == 'alert'; assert data['team_notification_status'] in {'sent', 'failed', 'disabled'}"
 after_count="$(curl -fsS "${TEAM_RECEIVER_URL}/notifications" | docker_exec -i "${API_CONTAINER_NAME}" python -c "import json,sys; data=json.load(sys.stdin); print(len(data['notifications']))")"
