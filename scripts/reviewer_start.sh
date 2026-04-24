@@ -16,6 +16,16 @@ if ! docker compose version >/dev/null 2>&1; then
   exit 1
 fi
 
+PYTHON_BIN=""
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN="python3"
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_BIN="python"
+else
+  echo "python3 or python is required for dynamic port checks but was not found on PATH." >&2
+  exit 1
+fi
+
 cp "${ENV_TEMPLATE}" "${ENV_FILE}"
 chmod 600 "${ENV_FILE}"
 
@@ -124,7 +134,7 @@ read_env_value() {
 
 is_port_available() {
   local port="$1"
-  python - "$port" <<'PY'
+  "${PYTHON_BIN}" - "$port" <<'PY'
 import socket
 import sys
 
