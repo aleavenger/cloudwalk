@@ -48,6 +48,9 @@ Primary reviewer entrypoint:
 ./scripts/reviewer_start.sh
 ```
 
+This one-step bootstrap regenerates the checkout anomaly CSV/SVG artifacts, starts API + Grafana + mock team receiver, and runs smoke checks before printing first-login details.
+Manual compose/local paths remain fallback options in `README.md` and are not the primary reviewer flow.
+
 ---
 
 # Evidence Map

@@ -182,6 +182,7 @@ Computation:
 ### Optional External Narrative Mode
 
 Environment/config default mode is local. External mode is optional and controlled by environment. The reviewer bootstrap flow is different: `./scripts/reviewer_start.sh` prompts with `external` selected by default for reviewer-facing narrative polish and falls back to local mode when no external key is provided.
+In that interactive bootstrap flow, OpenAI defaults to `gpt-4.1-mini` unless a different model is entered. In raw compose mode without an explicit model, the container env default remains `gpt-4o-mini`.
 
 Supported providers:
 - `openai`
@@ -242,9 +243,12 @@ From `database/*.csv`, the repository produces and exposes:
 
 ## Reviewer Validation Scope
 
-- `./scripts/reviewer_start.sh` and `./scripts/smoke_one_click.sh` validate runtime wiring: service startup, API health, protected endpoints, artifact generation, dashboard provisioning, and webhook delivery.
+- `./scripts/reviewer_start.sh` is the primary reviewer path and runs smoke checks automatically. `./scripts/smoke_one_click.sh` is useful as an explicit rerun/troubleshooting check.
+- smoke checks validate runtime wiring: service startup, API health, authenticated happy-path calls to `/metrics`, `/alerts`, and `/decision`, artifact generation, dashboard provisioning contract checks, and webhook delivery.
 - bootstrap specifically proves the required checkout anomaly CSVs and SVG reviewer artifacts are generated before API startup, preserving the one-click evidence contract
-- smoke checks also prove the replay/alert path is reachable end to end and that reviewer-visible Grafana contracts do not regress into empty or malformed panels
+- smoke checks also prove the replay/alert path is reachable end to end and that reviewer-visible Grafana contracts remain structurally intact
+- dashboard UI checks are conditional: when Playwright tooling is available, the smoke flow verifies Grafana page access and expected panel titles
+- smoke checks do not, by themselves, prove unauthenticated rejection behavior for every protected endpoint or guarantee all Grafana panels are populated with data
 - Those checks do not automatically prove every narrative claim in `report/presentation.md` or `report/technical_report.md`.
 - Reviewer-facing conclusions should be verified against the source CSVs, SQL queries in `sql/`, generated checkout artifacts in `database/report/` and `charts/`, and API/dashboard outputs.
 - Direct evidence review is still the right standard for the first-challenge conclusion, for whether the highlighted checkout windows are the most operationally important, and for whether the threshold choices are sensible for the provided data.

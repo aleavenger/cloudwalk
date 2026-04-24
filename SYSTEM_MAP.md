@@ -76,7 +76,7 @@ From environment (`app/config.py`, `.env.example`, `docker-compose.yml`):
 - Baseline/noise control: `MINIMUM_TOTAL_COUNT`, `MINIMUM_METRIC_COUNT`, `BASELINE_WINDOW_MINUTES`, `COOLDOWN_MINUTES`
 - Threshold tuning: `FLOOR_RATE_DENIED`, `FLOOR_RATE_FAILED`, `FLOOR_RATE_REVERSED`, `WARNING_MULTIPLIER`, `CRITICAL_MULTIPLIER`
 - Decision runtime: `DECISION_ENGINE_MODE`, `DECISION_LOOKBACK_MINUTES`, `DECISION_FORECAST_HORIZON_MINUTES`, `DECISION_FORECAST_STEP_MINUTES`, `DECISION_MIN_HISTORY_POINTS`
-- Optional external narrative: `EXTERNAL_AI_PROVIDER`, `EXTERNAL_AI_MODEL`, `EXTERNAL_AI_API_KEY`, `EXTERNAL_AI_BASE_URL`, `EXTERNAL_AI_TIMEOUT_SECONDS` (compose defaults: provider `openai`, model `gpt-4o-mini`; base URL empty uses official OpenAI)
+- Optional external narrative: `EXTERNAL_AI_PROVIDER`, `EXTERNAL_AI_MODEL`, `EXTERNAL_AI_API_KEY`, `EXTERNAL_AI_BASE_URL`, `EXTERNAL_AI_TIMEOUT_SECONDS` (interactive reviewer bootstrap defaults OpenAI model prompt to `gpt-4.1-mini`; raw compose defaults remain provider `openai`, model `gpt-4o-mini` when model env is unset; empty base URL uses official OpenAI)
 - Reviewer Grafana UX: `GRAFANA_ANONYMOUS_ENABLED`
 
 ## Data Flow and Persistence

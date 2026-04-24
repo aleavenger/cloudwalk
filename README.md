@@ -19,6 +19,8 @@ This submission was built with AI assistance, but under explicit engineering con
 Prerequisites:
 - Docker Engine
 - Docker Compose (v2, `docker compose`)
+- `curl`
+- `python3`
 - Network access to pull images and the pinned Grafana Infinity plugin
 
 Single command startup:
@@ -33,9 +35,9 @@ Services:
 - Mock team receiver: `http://127.0.0.1:8010`
 
 Bootstrap behavior:
-- creates `.env.reviewer` from `.env.example` and sets owner-only permissions (`chmod 600`)
+- recreates `.env.reviewer` from `.env.example` on each run and sets owner-only permissions (`chmod 600`)
 - prompts for decision mode (`local` or `external`), defaulting to `external` for reviewer narrative polish
-- if `external`: prompts provider (`openai`, `anthropic`, `google`), model, and API key
+- if `external` is selected: prompts provider (`openai`, `anthropic`, `google`), model, and API key
 - falls back to deterministic `local` mode when external key is not provided
 - starts API + Grafana + mock team receiver with `docker compose --env-file .env.reviewer up --build -d`
 - runs `./scripts/smoke_one_click.sh`
@@ -72,16 +74,16 @@ Reviewer-facing deliverables:
 - architecture reference: `SYSTEM_MAP.md`
 - original challenge prompt mirrored in the repo: `database/monitoring-test.md`
 
-Smoke checks after startup:
+Optional smoke rerun after startup:
 
 ```bash
 ./scripts/smoke_one_click.sh
 ```
 
-This smoke script also enforces the Grafana dashboard provisioning contract (query format/parser/typed columns) to catch "No data" regressions.
-It also triggers a known alert and verifies the local mock team receiver recorded the webhook payload.
-When Playwright tooling is available, smoke checks also run `./scripts/check_grafana_dashboard_playwright.sh` for reviewer-visible dashboard validation.
-These checks validate runtime wiring and reviewer UX: API availability, generated artifacts, dashboard contract/rendering, and webhook delivery.
+This smoke script verifies `/health`, authenticated happy-path access to `/metrics`, `/alerts`, and `/decision`, generated artifact presence, dashboard provisioning contract, and mock webhook delivery.
+When Playwright tooling is available, smoke checks also run `./scripts/check_grafana_dashboard_playwright.sh` for reviewer-visible dashboard page/panel-title validation.
+These checks validate runtime wiring and reviewer UX: API availability, authenticated endpoint wiring, generated artifacts, dashboard contract checks, and webhook delivery.
+They do not, by themselves, prove unauthenticated rejection behavior across all protected endpoints or guarantee all Grafana panels are populated with data.
 They do not by themselves prove the challenge 3.1 checkout conclusion in `report/presentation.md` or `report/technical_report.md`; that evidence should be reviewed directly from the datasets, SQL, generated checkout artifacts, and API outputs.
 
 ## Why Deterministic Rules Instead Of ML
@@ -102,15 +104,6 @@ Thresholds are baseline-aware rather than arbitrary constants:
 - cooldown: repeated metric + severity alerts are suppressed for a short window so operators see state changes, not spam
 - volume gates: low-traffic windows are suppressed so thresholds are only meaningful when there is enough evidence
 
-Optional config override:
-
-```bash
-cp .env.example .env
-docker compose up --build
-```
-
-`API_PORT` changes only the host binding (`127.0.0.1:<API_PORT>`). The internal Compose service URL stays `http://api:8000`.
-
 ## Security and Runtime Defaults
 
 - Published ports are localhost-only:
@@ -119,10 +112,9 @@ docker compose up --build
   - `127.0.0.1:8010` for the mock team receiver
 - `/health` is public.
 - `/monitor`, `/monitor/transaction`, `/metrics`, `/metrics/recent`, `/metrics/focus`, `/alerts`, `/decision`, `/decision/focus`, and `/decision/forecast/focus` require `X-API-Key` when `MONITORING_API_KEY` is set (enabled by default in one-click mode).
-- Output directories are mounted to host:
-  - `report/`
-  - `charts/`
-  - `logs/`
+- Generated reviewer artifacts are written on host under `database/report/` and `charts/`.
+- Runtime logs are written on host under `logs/`.
+- Compose host mounts include `database/`, `charts/`, `grafana/`, `logs/`, and `sql/`.
 - Formal alerts always write aggregate metadata to `logs/alerts.log` and, in one-click mode, also deliver a webhook payload to the local mock team receiver.
 
 Monitoring ingestion paths:
@@ -150,7 +142,7 @@ What `transactions_auth_codes.csv` adds:
 What bootstrap and smoke validation proves:
 
 - bootstrap proves the repository can generate the required first-challenge CSV/SVG artifacts before the API starts
-- smoke checks prove service startup, auth protection, API wiring, dashboard provisioning, mock webhook delivery, and reviewer-visible rendering contracts
+- smoke checks prove service startup, authenticated happy-path API wiring (`/metrics`, `/alerts`, `/decision`), dashboard provisioning contract checks, mock webhook delivery, and (when tooling is present) dashboard page/panel-title rendering checks
 - those checks are strong evidence that the submission runs end to end on a clean machine
 - they are not a substitute for direct evidence review of the checkout conclusion, threshold reasonableness, or the meaning of a specific anomaly window
 
@@ -159,7 +151,8 @@ Decision guidance modes:
 - Reviewer bootstrap default: `./scripts/reviewer_start.sh` prompts with `external` selected by default for richer reviewer-facing narrative polish, then falls back to `local` if no external key is provided.
 - `DECISION_ENGINE_MODE=external`: local scoring remains authoritative; external provider may rewrite only `summary`, `top_recommendation`, `problem_explanation`, and `forecast_explanation`.
 - Supported external providers: `openai`, `anthropic`, `google`.
-- In compose mode, defaults are `EXTERNAL_AI_PROVIDER=openai` and `EXTERNAL_AI_MODEL=gpt-4o-mini` when those variables are not set.
+- In interactive reviewer bootstrap mode, OpenAI external prompt defaults to `gpt-4.1-mini` unless you choose another model.
+- In raw compose mode without bootstrap-selected model, defaults are `EXTERNAL_AI_PROVIDER=openai` and `EXTERNAL_AI_MODEL=gpt-4o-mini` when those variables are not set.
 - Default `DECISION_MIN_HISTORY_POINTS=1` is demo-oriented and `/decision` shows a forecast warning when this test value is used; production recommendation is `5`.
 - For `openai`, optional `EXTERNAL_AI_BASE_URL` enables OpenAI-compatible endpoints (for example `https://openrouter.ai/api/v1`); leave it empty to use official OpenAI.
 - External failures safely fall back to local output and expose sanitized provider status in `/decision`.
@@ -191,7 +184,18 @@ The "What Could Get Worse In The Forecast Window" panel is the exception: it use
 Auth-code evidence is rendered as readable dashboard strings such as `51 Insufficient funds x6` while the API still keeps the structured top-code tuples for machine consumers.
 Decision/business-impact panels render confidence and rate values with percent-based human-readable units while API fields remain raw numeric values.
 
-## Manual Setup (Fallback)
+## Fallback Setup (Only If One-Click Is Not Suitable)
+
+Compose fallback (non-interactive env file):
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+`API_PORT` changes only the host binding (`127.0.0.1:<API_PORT>`). The internal Compose service URL stays `http://api:8000`.
+
+Local API fallback (outside compose):
 
 ```bash
 python3 -m venv .venv

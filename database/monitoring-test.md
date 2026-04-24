@@ -4,8 +4,8 @@
 
 For this repository submission, start with:
 
-- `../README.md` for reviewer bootstrap, services, and reproducibility
-- `../report/presentation.md` for the primary reviewer-facing deliverable
+- `../README.md` and run `./scripts/reviewer_start.sh` first for bootstrap, services, and reproducibility
+- `../report/presentation.md` next for the primary reviewer-facing deliverable
 - `../report/technical_report.md` for the detailed written explanation
 - `../docs/monitoring-methodology.md` for the source-of-truth data-flow and methodology description
 

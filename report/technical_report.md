@@ -8,6 +8,11 @@ Challenge 3.1 is an investigation of checkout behavior:
 - separate that prioritization from challenge 3.2, which implements the transaction monitoring runtime
 - rank priority by structural interruption risk rather than total-day deviation, so multi-hour zero-gap drops outrank broad uplift
 
+Primary reviewer startup path:
+- `./scripts/reviewer_start.sh` is the intended reviewer bootstrap entrypoint.
+- It prepares `.env.reviewer`, starts API + Grafana + mock team receiver, regenerates required checkout artifacts, and runs smoke checks.
+- Manual compose/local runs are fallback options for troubleshooting or special execution preferences.
+
 ## How Data Was Processed And Evaluated
 
 ### How Checkout Behavior Was Compared Against Historical Baselines
@@ -129,6 +134,6 @@ Challenge 3.2 runtime implementation:
 ## Known Limits Of This Local Demonstration
 
 - Local in-memory state (alerts and cooldown) is process-scoped.
-- One-click reviewer mode provisions the Grafana plugin and a localhost mock team receiver automatically; manual local mode still requires a manual Grafana install path and an optional webhook target if team delivery is being tested outside compose.
+- One-click reviewer mode provisions the Grafana plugin and a localhost mock team receiver automatically; manual local mode remains a fallback path and still requires a manual Grafana install path plus an optional webhook target if team delivery is tested outside compose.
 - Dataset is historical snapshot, so real-time behavior is replay-like for demonstration.
 - The checkout investigation flags suspicious windows for follow-up, but it does not establish business or system root cause by itself.
